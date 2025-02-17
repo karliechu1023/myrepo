@@ -1,0 +1,451 @@
+---
+title: "HW 3 Nonlinear & Nonparametric Regression: Data Analysis Problems"
+subtitle: "Advanced Regression (STAT 353-0)"
+author: "Zihan Chu"
+pagetitle: "HW 3 Zihan Chu"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+    theme: cosmo
+
+execute:
+  warning: false
+
+from: markdown+emoji
+reference-location: margin
+citation-location: margin  
+---
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+To link to your github **repo**sitory, appropriately edit the example link below. Meaning replace `https://your-github-repo-url` with your github repo url. Suggest verifying the link works before submitting.
+
+[https://github.com/karliechu1023/myrepo.git](https://github.com/karliechu1023/myrepo.git)
+
+:::
+
+::: {.callout-important}
+
+All students are required to complete this problem set!
+
+:::
+
+## Load packages & data
+
+```{r}
+#| label: load-pkgs-data
+library(ggplot2)
+library(car)
+library(MASS)
+library(plotly)
+library(olsrr)
+```
+
+
+## Data analysis problems
+
+### 1. Exercise D17.1 
+
+The data in `Ginzberg.txt` (collected by Ginzberg) were analyzed by Monette (1990). The data are for a group of 82 psychiatric patients hospitalized for depression. The response variable in the data set is the patient's score on the Beck scale, a widely used measure of depression. The explanatory variables are "simplicity" (measuring the degree to which the patient "sees the world in black and white") and "fatalism". (These three variables have been adjusted for other explanatory variables that can influence depression.) Use the adjusted scores for the analysis.
+
+Using the full quadratic regression model
+
+$$Y = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \beta_3 X_1^2 + \beta_4 X_2^2 + \beta_5 X_1 X_2 + \epsilon$$
+
+regress the Beck-scale scores on simplicity and fatalism.
+
+(a) Are the quadratic and product terms needed here?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+gin_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/Ginzberg.txt")
+# with quadratic and product terms
+model <- lm(adjdepression ~ adjsimplicity + adjfatalism + 
+              I(adjsimplicity^2) + I(adjfatalism^2) + 
+              adjsimplicity * adjfatalism, data = gin_data)
+
+summary(model)
+
+# without quadratic and product terms
+model_linear <- lm(adjdepression ~ adjsimplicity + adjfatalism, data = gin_data)
+anova(model_linear, model)
+```
+From thw summary, we can see that the quadratic terms has insignificant p-values (0.5966,0.2657), indicating they do not contribute significantly.
+The interaction term is on the edge of significance (0.0505), suggesting a possible interaction effect but not strong enough to be conclusive.
+The F-test comparing the two models has p = 0.1147, which is not statistically significant.
+This suggests that adding the quadratic and interaction terms does not significantly improve the model fit.
+:::
+
+(b) Graph the data and the fitted regression surface in three dimensions. Do you see any problems with the data?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+grid <- expand.grid(
+  adjsimplicity = seq(min(gin_data$adjsimplicity), max(gin_data$adjsimplicity), length.out = 30),
+  adjfatalism = seq(min(gin_data$adjfatalism), max(gin_data$adjfatalism), length.out = 30)
+)
+grid$predicted <- predict(model, newdata = grid)
+z_matrix <- matrix(grid$predicted, nrow = 30, byrow = TRUE)
+
+fig <- plot_ly()
+
+fig <- fig %>%
+  add_trace(
+    x = gin_data$adjsimplicity,
+    y = gin_data$adjfatalism,
+    z = gin_data$adjdepression,
+    type = "scatter3d",
+    mode = "markers",
+    marker = list(size = 5, color = "blue"),
+    name = "Actual Data"
+  )
+
+fig <- fig %>%
+  add_trace(
+    x = grid$adjsimplicity,
+    y = grid$adjfatalism,
+    z = z_matrix,
+    type = "surface",
+    colorscale = "Viridis",
+    opacity = 0.6,
+    name = "Regression Surface"
+  )
+
+fig
+```
+For data distribution:
+The blue dots appear to be clustered in a relatively compact region, mostly in the middle range of both simplicity and fatalism scores.However, there's one notable outlier point that sits quite far from this main cluster.The actual data points don't seem to follow any strong curved pattern. The relationship between the variables appears to be predominantly linear.
+
+The surface's curves and twists might be an artifact of overfitting, and appears to extend beyond the region where we have actual data points.The outlier point appears to be having a substantial influence on the fitted surface.The spread of the data points around the fitted surface suggests there might be considerable variability that isn't being captured by our model.
+
+:::
+
+(c) What do standard regression diagnostics for influential observations show?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+influence_measures <- influence.measures(model)
+influence_plot <- ols_plot_resid_lev(model)
+# Cook's distance plot
+plot(cooks.distance(model), 
+     ylab = "Cook's Distance",
+     main = "Influence Plot - Cook's Distance")
+abline(h = 4/nrow(gin_data), col = "red", lty = 2)
+
+par(mfrow = c(2,2))
+plot(model)
+```
+1. Cook's Distance: Most observations have very low Cook's distance values (close to 0). There are three notably influential points with higher Cook's distances, particularly observations around indices 70-80. The red dashed line represents a common threshold for concerning influence (4/n). While these points have higher influence than others, they don't appear to be extremely problematic as their Cook's distances are still relatively modest.
+2. Residual: The residuals scatter fairly randomly around the horizontal line at zero and there's no obvious pattern. The spread of residuals appears relatively consistent across fitted values.
+3. Normal Q-Q plot: Most points follow the diagonal line quite well though there's some minor deviation at the extreme ends. Overall, the normality assumption appears reasonably satisfied
+4. Scale-Location: The relatively horizontal red line suggests fairly consistent variance.
+5. Residual vs Leverage: Most observations have low leverage and moderate residuals, and no points fall outside the dashed Cook's distance lines, suggesting no severely problematic observations.
+
+
+:::
+
+### 2. Exercise D18.2 
+
+For this analysis, use the `States.txt` data, which includes average SAT scores for each state as the outcome.
+
+(a) Put together a model with SAT math (`satMath`) as the outcome and `region`, `population`, `percentTaking`,  and `teacherPay` as the explanatory variables, each included as linear terms. Interpret the findings.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+s_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/States.txt")
+s_data$region = as.factor(s_data$region)
+model1 <- lm(satMath ~ region + population + percentTaking + teacherPay, data = s_data)
+summary(model1)
+par(mfrow = c(2,2))
+plot(model)
+```
+The model explains a substantial portion of the variance in SAT math scores, with an adjusted R-squared of 0.8508 (85.08%). The F-statistic (26.91) with a very small p-value (7.914e-15) indicates that the model as a whole is statistically significant.
+percentTaking has a strong negative relationship with SAT math score, with p-value 6.37e-07. Other variables show less significant impacts, and only regionSA is somehow more significant. For each 1% increase in students taking the SAT, the math score decreases by about 1.09 points, holding other variables constant. Teacher pay and population have minimal effects on SAT math scores.
+
+The residuals appear fairly randomly scattered around zero. 
+For QQ plot, the residuals follow the diagonal line quite well, although has some outliers, it still shows reasonably normal distribution of residuals. 
+For the leverage plot, most points have relatively low leverage and no points fall outside Cook's distance contours.
+
+
+:::
+
+(b) Now, instead approach building this model using the nonparametric-regression methods discussed in Chapter 18 of our main course textbook, FOX. Fit a general nonparametric regression model *and* an additive-regression model, comparing the results to each other and to the linear least-squares fit to the data (in part (a))). If you have problems with categorical variables for the nonparametric models, feel free to remove them. Be sure to explain the models.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(mgcv)  
+library(np)
+# 1. LOESS model
+loess_model <- loess(satMath ~ population + percentTaking + teacherPay, data = s_data, span = 0.75)
+s_data$loess_pred <- predict(loess_model)
+
+ggplot(s_data, aes(x = percentTaking, y = satMath)) +
+  geom_point() +
+  geom_line(aes(y = loess_pred), color = "blue") +
+  labs(title = "LOESS regression", x = "percent taking SAT", y = "SAT math score") +
+  theme_minimal()
+
+# 2. GAM model
+gam_model <- gam(satMath ~ s(population) + s(percentTaking) + s(teacherPay), data = s_data)
+summary(gam_model)
+plot(gam_model,pages=1)
+
+# compare R-squared values
+lm_r2 <- summary(model1)$r.squared
+gam_r2 <- summary(gam_model)$r.sq
+
+print(paste("Linear Model R²:", lm_r2))
+print(paste("GAM Model R²:", gam_r2))
+
+linear_pred <- predict(model1)
+gam_pred <- predict(gam_model)
+loess_pred <- predict(loess_model)
+
+par(mfrow = c(2,2))
+# plot 1: linear vs LOESS predictions
+plot(linear_pred, loess_pred,
+     xlab = "Linear model predictions",
+     ylab = "LOESS predictions",
+     main = "Linear vs LOESS")
+abline(0, 1, col = "red")
+
+# plot 2: linear vs GAM
+plot(linear_pred, gam_pred,
+     xlab = "Linear Model Predictions",
+     ylab = "GAM Predictions",
+     main = "Linear vs GAM")
+abline(0, 1, col = "red")
+
+# plot 3: LOESS vs GAM predictions
+plot(loess_pred, gam_pred,
+     xlab = "LOESS Predictions",
+     ylab = "GAM Predictions",
+     main = "LOESS vs GAM")
+abline(0, 1, col = "red")
+
+
+```
+From the first LOESS plot, we can see a strong negative relationship that's consistently decreasing but not exactly linear.The blue curve represents the LOESS fit, showing a wiggly nonlinear relationship between percentTaking and SAT Math scores.
+
+From the GAM curve, the almost horizontal line suggests population has minimal impact on SAT math scores, also the narrow confidence bands indicate this flat relationship (which correspond to the insignificant p-value0.4975). For teacher's pay, it shows some influence, but not so significant. For Percent taking SAT, it shows a strong nonlinear relationship, and the effect is quite substantial (also the p-value < 2e-16)
+
+For the comparison, all three models show strong agreement in their predictions. The R-squared values are very similar, and the linear model has a slightly bigger R-squared value.
+
+Therefore, the linear model performs surprisingly well, despite missing some nonlinear patterns.
+
+
+:::
+
+(c) Can you handle the nonlinearity by a transformation or by another parametric regression model, such as a polynomial regression? Investigate and explain. What are the tradeoffs between these nonparametric and parametric approaches?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+# Fit polynomial regression model
+poly_model <- lm(satMath ~ population + poly(percentTaking, 2) + teacherPay, 
+                 data = s_data)
+
+# log transformation model
+log_model <- lm(satMath ~ population + log(percentTaking + 1) + teacherPay,
+                data = s_data)
+# Compare models
+summary(poly_model)
+summary(log_model)
+anova(poly_model, log_model)
+
+plot(s_data$percentTaking, s_data$satMath,
+     xlab = "Percent Taking SAT",
+     ylab = "SAT Math Score",
+     main = "Comparing Model Fits")
+
+lines(sort(s_data$percentTaking), 
+      fitted(poly_model)[order(s_data$percentTaking)],
+      col = "blue", lwd = 2)
+lines(sort(s_data$percentTaking),
+      fitted(log_model)[order(s_data$percentTaking)],
+      col = "red", lwd = 2)
+```
+For each unit increase in log(percentTaking + 1), SAT math scores decrease by 38.70 points. For each unit increase in teacherPay, scores increase by 1.238 points. Population has negligible effect (-1.797e-05).
+
+Both polynomial terms for percentTaking are highly significant (p < 2e-16 and p < 1.18e-05).teacherPay is significant (p = 0.0308) with positive effect (0.9411). Population remains non-significant (p = 0.8033). For percent taking, when the test participation increases by 1%, assuming other variables constant, the expected SAT math score will decrease by 237.9 point initially but this decrease will slow down by 72.06% for each additional percent increase, showing a U-shaped relationship.
+
+The summary shows that both log-transformation and the polynimial test have similar adjusted R-squared v alue. From the anova test, the p-value (0.2177) is not significant at the conventional 0.05 level. This means we fail to reject the null hypothesis that both models fit the data equally well.
+
+The drawback for polynomial regression model is that we need to choose a reasonable degree of the polynomial, or it may be overfit the data. Also, it is less flexible than nonparametric approaches. The advantages are that it can capture the basic nonlinear pattern, reveal unexpected patterns in the data, and it is more interpretable coefficients than nonparametric methods.
+
+For log-transformaton model, it is very simple to interpret and it can handle the diminishing effect. However, it may not capture more complex patterns and it imposes a specific form of nonlinearity. Therefore, since both models fit the data almost equally well, we can choose log transformation model for easier interpretation. 
+
+:::
+
+### 3. Exercise D18.3
+
+Return to the `Chile.txt` dataset used in HW 2. Reanalyze the data employing generalized nonparametric regression (including generalized additive) models. As in HW2, you can remove abstained and undecided votes, and focus only on Yes and No votes.
+
+(a) What, if anything, do you learn about the data from the nonparametric regression?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+chile_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/Chile.txt")
+chile_clean <- chile_data %>%
+  filter(vote %in% c("Y", "N")) %>%
+  mutate(
+    vote_binary = ifelse(vote == "Y", 1, 0),
+    region = as.factor(region),
+    sex = as.factor(sex),
+    education = as.factor(education)
+  )
+```
+
+```{r}
+gam_chile <- gam(vote_binary ~ 
+    s(age, bs = "cr") + s(income, bs = "cr", k=5) + s(statusquo, bs = "cr") +  sex + education + region,  family = binomial, data = chile_clean)
+
+summary(gam_chile)
+par(mfrow = c(2, 2))
+plot(gam_chile, pages = 1)
+```
+From the model summary, the model explains 70.6% of the deviance (R= 0.766), indicating a good fit. Among the smooth terms, only statusquo shows strong significance (p < 2e-16).For one percent change in statusquo, the vote will change by 1.581 points. For parametric terms, sex and education levels are significant predictors, while region is not.
+
+From the plots, statusquo shows a strong, nearly linear positive relationship with voting behavior. The relationship appears to be quite linear across the entire range. It has the strongest effect among all predictors.
+
+Age shows a very weak, nearly flat relationship (p = 0.747), and the confidence bands are relatively wide, which means no significant nonlinear patterns are visible.
+
+Income shows a slight nonlinear pattern but is not statistically significant (p = 0.398). Also, the relationship is relatively flat with minor fluctuations, and there is a wide confidence bands indicate high uncertainty.
+
+:::
+
+(b) If the results appear to be substantially nonlinear, can you deal with the nonlinearity in a suitably respecified generalized linear model (e.g., by transforming one or more explanatory variables)? If they do not appear nonlinear, still try a transformation to see if anything changes.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+chile_clean$income_scaled <- scale(chile_clean$income)
+gam_scaled <- gam(
+  vote_binary ~ 
+    s(age, bs = "cr") +
+    s(income_scaled, bs = "cr", k = 5) +
+    s(statusquo, bs = "cr") +
+    sex + education + region,
+  family = binomial,
+  data = chile_clean
+)
+summary(gam_scaled)
+par(mfrow = c(2, 2))
+plot(gam_scaled, pages = 1)
+```
+
+:::
+
+### 4. Exercise E18.7
+
+For this analysis, use the `Duncan.txt` data. Here we are interested in the outcome `prestige` and the explanatory variable `income`.
+
+(a) Fit the local-linear regression of prestige on income with span $s = 0.6$ (see Figure 18.7 in the book). This has 5.006 equivalent degrees of freedom, very close to the number of degrees of freedom for a fourth order polynomial.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+d_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/Duncan.txt")
+library(KernSmooth) 
+library(ggplot2)
+model_loess <- loess(prestige ~ income, data=d_data, span=0.6, degree=2)
+summary(model_loess)
+cat("Equivalent degrees of freedom:", model_loess$trace.hat)
+
+plot(d_data$income, d_data$prestige,
+     xlab = "income",
+     ylab = "prestige",
+     main = "Local-Linear regression of prestige on income")
+
+# Add the fitted line
+income_grid <- seq(min(d_data$income), max(d_data$income), length.out = 100)
+predicted <- predict(model_loess, newdata = data.frame(income = income_grid))
+lines(income_grid, predicted, col = "blue", lwd = 2)
+```
+
+:::
+
+(b) Fit a fourth order polynomial of the data and compare the resulting regression curve with the local-linear regression.
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+poly_model <- lm(prestige ~ poly(income, 4), data=d_data)
+
+income_grid <- seq(min(d_data$income), 
+                  max(d_data$income), 
+                  length.out = 100)
+
+# Get predictions for both models
+local_pred <- predict(model_loess, 
+                     newdata = data.frame(income = income_grid))
+poly_pred <- predict(poly_model, 
+                    newdata = data.frame(income = income_grid))
+
+plot(d_data$income, d_data$prestige,
+     xlab = "Income",
+     ylab = "Prestige",
+     main = "comparison of Local-Linear and polynomial regression",
+     pch = 16,col = "gray40")      
+
+# Add both fitted lines
+lines(income_grid, local_pred, 
+      col = "blue", 
+      lwd = 2,
+      lty = 1)           
+lines(income_grid, poly_pred, 
+      col = "red", 
+      lwd = 2,
+      lty = 2)      
+
+legend("topleft",
+       legend = c("Local-Linear (span=0.6)", 
+                 "4th Order Polynomial"),
+       col = c("blue", "red"),
+       lwd = 2,
+       lty = c(1, 2),
+       bg = "white")
+
+cat("\nSummary of fourth-order polynomial fit:\n")
+print(summary(poly_model))
+
+# R-squared for both fits for comparison
+# For local-linear fit
+local_fitted <- predict(model_loess, newdata = data.frame(income = d_data$income))
+local_r2 <- 1 - sum((d_data$prestige - local_fitted)^2) / 
+            sum((d_data$prestige - mean(d_data$prestige))^2)
+
+cat("\nR-squared values:\n")
+cat("Local-linear R²:", round(local_r2, 4), "\n")
+cat("Polynomial R²:", round(summary(poly_model)$r.squared, 4), "\n")
+```
+The plot shows that both models capture similar overall patterns in the data, with prestige generally increasing with income but showing some nonlinear behavior.They both start with a steep increase at lower income levels, shows some leveling off at higher incomes, and has a slight decrease at the very highest income levels.
+
+However, the local-linear fit appears slightly smoother, and the polynomial fit shows slightly more curvature, especially in the middle range. The difference in R² is very small (about 0.0046), suggesting comparable overall fit quality. The simpler local-linear model performs slightly better in terms of R²
+
+The polynomial regression statistics show a highly significant first-order term (p < 2e-16). Higher-order terms (2nd through 4th) are not individually significant (p-values > 0.05)
+:::
