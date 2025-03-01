@@ -1,0 +1,529 @@
+---
+title: "HW 4 Missing Data & Model Selection: Data Analysis Problems "
+subtitle: "Advanced Regression (STAT 353-0)"
+author: "Zihan Chu"
+pagetitle: "HW 4 Zihan Chu"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+    theme: cosmo
+
+execute:
+  warning: false
+
+from: markdown+emoji
+reference-location: margin
+citation-location: margin
+---
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+[https://github.com/karliechu1023/myrepo.git](https://github.com/karliechu1023/myrepo.git)
+
+:::
+
+::: {.callout-important}
+
+All students are required to complete this problem set!
+
+:::
+
+```{r}
+library(tidyverse)
+library(mice) 
+library(car) 
+library(MASS)
+```
+
+
+
+## Data analysis problems
+
+### 1. Exercise D20.1 (MI)
+
+Using the United Nations social-indicators data (in `UnitedNations.txt`), develop a regression model for the response variable female expectation of life. Feel free to use whatever explanatory variables in the data set make sense to you and to employ variable transformations, if needed.
+
+(a) Work initially with complete cases, and once you have an apparently satisfactory model, obtain estimates and standard errors of the regression coefficients.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+united_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/UnitedNations.txt")
+united_data$region <- as.factor(united_data$region)
+united_data_complete <- na.omit(united_data)
+
+# Fit a linear regression model using complete cases
+model_complete <- lm(lifeFemale ~ ., united_data_complete)
+summary(model_complete)
+```
+Many predictors are not significant, suggesting possible multicollinearity. GDP per Capita has a very small coefficient (8.485e-05), suggesting it might benefit from log transformation. The residuals range from -2.08 to 1.61, which isn't terrible but could potentially be improved.
+
+```{r}
+plot(model_complete)
+vif(model_complete)
+```
+
+
+# do data transformation 1
+```{r}
+model_transformed <- lm(lifeFemale ~ tfr + lifeMale + 
+                       log(GDPperCapita) + economicActivityFemale + log(educationFemale) + economicActivityMale+ contraception,
+                       data = united_data_complete)
+summary(model_transformed)
+plot(model_transformed)
+vif(model_transformed)
+anova(model_complete, model_transformed)
+```
+From influential points and outliers, we can see Latvia, Indonesia, Botswana appear as potential outliers. The residuals vs fitted plot shows a slight pattern, suggesting potential non-linearity. The Q-Q plot shows some deviation from normality at the tails.
+There are high VIF values for several predictors:tfr (7.1), lifeMale (5.72), illiteracyFemale  (6.7), suggestting a potential multicollinearity.I try to improve the model again.
+The anova test has a p-value (0.05752) which is significant at the level of 0.05, which indicates that the model 2 has a better fit than the original model.
+
+
+# data transformation 2
+```{r}
+model_improved <- lm(lifeFemale ~ tfr + lifeMale + 
+                       log(GDPperCapita) + economicActivityFemale + log(educationFemale) ,
+                       data = united_data_complete)
+summary(model_improved)
+plot(model_improved)
+vif(model_improved)
+anova(model_transformed, model_improved)
+```
+VIF values are improved (all < 4), indicating reduced multicollinearity. The p-value = 0.2441 (> 0.05) for the anova test means there's no significant difference between Model 1 and Model 2. We can use the simpler Model 2 (removing economicActivityMale and contraception doesn't significantly worsen the model).
+
+For each one-unit increase in fertility rate, female life expectancy decreases by 1.74 years, and it's highly significant.(p < 0.001)
+For each one-year increase in male life expectancy, female life expectancy increases by 0.85 years, and it's highly significant.(p < 0.001)
+For GDP, Female Economic Activity, and Female Education, they are not statistically significant. 
+The model explains 98.15% of the variance in female life expectancy.
+
+
+:::
+
+(b) Now redo your analysis in (a) but use multiple imputation.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+set.seed(123)
+imp <- mice(united_data, m = 5, method="pmm", seed=123)
+model_imp_complete <- with(imp, lm(lifeFemale ~ region + tfr + contraception + educationMale + 
+       educationFemale + lifeMale + infantMortality + GDPperCapita + 
+       economicActivityMale + economicActivityFemale + 
+       illiteracyMale + illiteracyFemale))
+
+pooled_complete <- pool(model_imp_complete)
+summary(pooled_complete)
+
+fit_stats <- pool.r.squared(model_imp_complete)
+print(fit_stats)
+```
+lifeMale, tfr, contraception, infantMortality, illiteracyFemale, regionEurope are significant predictors. 
+
+```{r}
+densityplot(imp) 
+```
+
+
+
+
+# Try improvement
+```{r}
+model_imp_transformed <- with(imp, 
+    lm(lifeFemale ~ region + 
+       log(tfr) +             
+       log(lifeMale) + 
+       I(infantMortality^2) +
+       log(contraception) + 
+       log(illiteracyFemale) + economicActivityFemale + log(GDPperCapita)))
+
+pooled_transformed <- pool(model_imp_transformed)
+summary(pooled_transformed)
+
+fit_stats_transformed <- pool.r.squared(model_imp_transformed)
+print(fit_stats_transformed)
+
+anova(model_imp_complete, model_imp_transformed)
+```
+I have made some transformation of the model, from the summary, we can see that the overall R^2 has increased, and the p-value in the anova test shows that there is a significant difference between the original complete model and the improved one.
+
+:::
+
+(c) Compare these results to those from the complete-case analysis. What do you conclude?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+# compare for r squared value:
+```{r}
+r2_complete_a <- summary(model_complete)$r.squared
+r2_improved_a <- summary(model_improved)$r.squared
+print(r2_complete_a)
+print(r2_improved_a)
+```
+
+:::
+
+
+### 2. Exercise D20.3 (Selection)
+
+Long (1997) reports a regression in which the response variable is the prestige of the academic departments where PhDs in biochemistry find their first jobs. The data are in the file `Long-PhDs.txt`.
+
+Prestige is measured on a scale that runs from 1.00 to 5.00, and is unavailable for departments without graduate programs and for departments with ratings below 1.00. The explanatory variables include a dummy regressor for gender; the prestige of the department in which the individual obtained his or her PhD; the number of citations received by the individualís mentor; a dummy regressor coding whether or not the individual held a fellowship; the number of articles published by the individual; and the number of citations received by the individual.
+
+Estimate the regression of prestige of first job on the other variables in three ways:
+
+(a) code all of the missing values as 1.00 and perform an OLS regression;
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+phd_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/Long-PhDs.txt")
+phd_data$gender <- factor(phd_data$gender)
+phd_data$fellowship <- factor(phd_data$fellowship)
+missing_count <- colSums(is.na(phd_data))
+print("Missing values per column:")
+print(missing_count)
+```
+
+```{r}
+phd_data_a <- phd_data
+phd_data_a$job[is.na(phd_data_a$job)] <- 1.00
+model_a <- lm(job ~ gender + phd + mentor + fellowship + articles + citations, 
+              data = phd_data_a)
+summary(model_a)
+```
+The overall model is statistically significant (F-statistic: 17.78, p-value < 2.2e-16) and explains about 21% of the variance in job prestige.
+There is a significant positive relationship between the prestige of the department where individuals obtained their PhD and their first job prestige. For each one-point increase in PhD department prestige, first job prestige increases by 0.273 points on average, holding other factors constant.
+
+Fellowship Status is significant in the 0.01 level. Individuals with fellowships tend to secure first jobs in departments with prestige ratings about 0.23 points higher than those without fellowships.
+
+The number of citations received by the individual has a small but significant positive effect on job prestige. Each additional citation is associated with a 0.004 point increase in first job prestige.
+
+The citations received by an individual's mentor show a marginally significant positive effect, suggesting some benefit from having a well-cited mentor.
+
+Gender: Being male is associated with a 0.139 point increase in job prestige compared to being female, but this effect is not statistically significant (p = 0.124).
+
+The number of articles published shows a positive but non-significant relationship with job prestige (p = 0.430).
+
+:::
+
+(b) treat the missing values as truncated at 1.00 and employ Heckmanís selection-regression model;
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(sampleSelection)
+phd_data_b <- phd_data
+phd_data_b$observed <- ifelse(!is.na(phd_data_b$job), 1, 0)
+
+phd_data_b$job_trunc <- phd_data_b$job
+phd_data_b$job_trunc[is.na(phd_data_b$job_trunc)] <- 1.00
+
+heckman_model <- selection(
+  selection = observed ~ gender + phd + mentor + fellowship + articles + citations,
+  outcome = job_trunc ~ gender + phd + mentor + fellowship + articles + citations,
+  data = phd_data_b,
+  method = "2step"
+)
+summary(heckman_model)
+```
+For selection equation:
+Gender: Being male significantly increases the probability of having an observed job prestige value (p < 0.01). This suggests that male PhDs are more likely to find jobs in departments where prestige ratings are available.
+Having a fellowship shows a marginally significant positive effect on having an observed prestige value, indicating that fellowship holders may be more likely to secure positions in departments with available prestige ratings.
+Individual citations have a marginally significant positive effect (β = 0.010, p < 0.10) on whether job prestige is observed, suggesting that more cited individuals are somewhat more likely to have jobs with measurable prestige.
+PhD department prestige, mentor citations, and number of articles do not significantly predict whether job prestige is observed.
+
+For outcome equation:
+only phd has the most significant impact on the outcome. Other predictors don't show significant impact on job prestige. The inverse Mills ratio is not statistically significant (p = 0.847), suggesting that selection bias may not be a major concern in this model. The low rho value (0.1903) also indicates a relatively weak correlation between the error terms in the selection and outcome equations.
+
+:::
+
+(c) treat the missing values as censored and fit the Tobit model.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(AER)
+phd_data_c <- phd_data
+phd_data_c$censored <- is.na(phd_data_c$job)
+phd_data_c$job_censored <- phd_data_c$job
+phd_data_c$job_censored[is.na(phd_data_c$job_censored)] <- 1.00
+tobit_model <- tobit(job_censored ~ gender + phd + mentor + fellowship + articles + citations, 
+                    left = 1.00, 
+                    data = phd_data_c)
+summary(tobit_model)
+```
+The model is highly significant (Wald-statistic: 96.21, p-value < 2.22e-16).
+The prestige of the department where individuals obtained their PhD is the strongest predictor of first job prestige. For each one-point increase in PhD department prestige, the expected job prestige increases by about 0.32 points, holding other factors constant.
+
+Having held a fellowship significantly increases expected job prestige. Individuals with fellowships tend to secure first jobs in departments with prestige ratings about 0.33 points higher than those without fellowships.
+
+Being male is associated with higher job prestige (β = 0.237, p < 0.05). Male PhDs tend to secure first jobs in departments with prestige ratings about 0.24 points higher than female PhDs, after controlling for other factors.
+
+The number of citations received by the individual has a small but significant positive effect. Each additional citation is associated with a 0.005 point increase in expected job prestige.
+
+Neither mentor citations nor the number of articles published show statistically significant effects on job prestige, though both have positive coefficients.
+
+:::
+
+(d) Compare the estimates and coefficient standard errors obtained by the three approaches. Which of these approaches makes the most substantive sense?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+ols_results <- summary(model_a)$coefficients
+heckman_results <- summary(heckman_model)$estimate
+tobit_results <- summary(tobit_model)$coefficients
+
+common_vars <- Reduce(intersect, list(rownames(ols_results), rownames(heckman_results), rownames(tobit_results)))
+ols_subset <- ols_results[common_vars, , drop=FALSE]
+heckman_subset <- heckman_results[common_vars, , drop=FALSE]
+tobit_subset <- tobit_results[common_vars, , drop=FALSE]
+
+comparison_df <- data.frame(
+  Variable = common_vars,
+  OLS_Coef = ols_subset[, 1],
+  OLS_StdErr = ols_subset[, 2],
+  Heckman_Coef = heckman_subset[, 1],
+  Heckman_StdErr = heckman_subset[, 2],
+  Tobit_Coef = tobit_subset[, 1],
+  Tobit_StdErr = tobit_subset[, 2]
+)
+
+print(comparison_df)
+```
+PhD is consistently significant across all three approaches. This suggests that PhD department prestige is a robust predictor of first job prestige regardless of how missing data is handled.
+Gender Effects show striking inconsistency. In the Heckman model, gender has a large positive coefficient (0.453) in the selection equation but non-significant in the OLS approach (0.139). The Tobit model shows a stronger effect (0.237) than OLS. This suggests that gender may influence both the selection process and outcome differently.
+Fellowship Status has consistent positive effects in OLS (0.234) and Tobit (0.325) but shows up primarily in the selection equation of the Heckman model (0.260), suggesting it affects whether one gets a job with measurable prestige rather than the prestige level itself.
+
+The Tobit model makes the most substantive sense for several reasons:
+1. The Heckman model reveals that gender and citations affect whether job prestige is observed, indicating a selection process that Tobit can handle more parsimoniously.
+2. The Tobit model produces estimates that generally align with theoretical expectations about academic job markets, where PhD prestige, fellowship status, gender, and citations all matter.
+3. Tobit generally has more reasonable standard errors than Heckman while accounting for the censoring mechanism (unlike OLS).
+
+
+
+
+
+:::
+
+### 3. Exercise (Bootstrap)
+
+We will now consider the `Boston` housing dataset from the `MASS` package.
+
+```{r}
+#| label: load-boston-data
+library(MASS)
+library(boot)
+data(Boston, package = "MASS")
+```
+
+Run `??Boston` in condole to see codebook.
+
+(a) Provide an estimate of the population mean of `medv`. Call this estimate $\hat{\mu}$.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+summary(Boston$medv)
+mu_hat <- mean(Boston$medv)
+mu_hat 
+```
+
+:::
+
+(b) What is the formula for the standard error of an estimate of the mean? Use this to provide an estimate of the standard error of $\hat{\mu}$ in (a).
+
+::: {.callout-tip icon="false"}
+## Solution
+
+The formula is s / sqrt(n), which is the sample standard deviation / square root of the number of observations
+```{r}
+# sample standard deviation
+s <- sd(Boston$medv)
+# sample size
+n <- length(Boston$medv)
+
+# standard error of the mean
+SE_mu_hat <- s / sqrt(n)
+SE_mu_hat  
+```
+
+:::
+
+(c) Estimate this standard error using the bootstrap. How does this compare to the answer from (b)?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+mean_func <- function(data, indices) {
+  return(mean(data[indices]))
+}
+set.seed(123) 
+bootstrap_results <- boot(data = Boston$medv, 
+                         statistic = mean_func, 
+                         R = 10000)
+print(bootstrap_results)
+# The bootstrap standard error
+bootstrap_se <- sd(bootstrap_results$t)
+cat("Classical estimate of standard error of mean:", SE_mu_hat, "\n")
+cat("Bootstrap estimate of standard error of mean:", bootstrap_se, "\n")
+```
+The bootstrap estimate of standard error is slightly smaller than the classical estimate of standard error, which makes sense since the bootstrap procedure is able to decrease the level of error, which will make the standard error to be smaller. 
+:::
+
+(d) Provide an estimate of $\hat{\mu}_{med}$, the  median value of `medv` in the population.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+median_hat <- median(Boston$medv)
+median_hat
+```
+
+:::
+
+(e) Estimate the standard error of $\hat{\mu}_{med}$. Notice that there is no simple formula to do this, so instead use the bootstrap. Comment on your findings.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+median_func <- function(data, indices) {
+  return(median(data[indices]))
+}
+set.seed(123) 
+bootstrap_results <- boot(data = Boston$medv, 
+                         statistic = median_func, 
+                         R = 10000)
+median_estimate <- bootstrap_results$t0
+median_se <- sd(bootstrap_results$t)
+cat("Bootstrap estimate of standard error of median:", median_se, "\n")
+```
+
+```{r}
+hist(Boston$medv, breaks = 15)
+```
+The histogram of medv shows a right-skewed distribution, meaning there are high-value outliers. 
+The standard error of the median is smaller than the standard error of the mean. This suggests that the distribution of medv may have some variability, but the median is slightly more stable. If the distribution were perfectly symmetric, we would expect the SEs to be almost equal.
+The mean is more sensitive to outliers, which could contribute to its slightly higher variability.
+
+
+:::
+
+### 4. Exercise D22.1 (Model Selection)
+
+The data file `BaseballPitchers.txt` contains salary and performance data for major-league baseball pitchers at the start of the 1987 season. The data are analogous to those for baseball hitters used as an example in the chapter. Be sure to explore the data and think about variables to use as predictors before specifying candidate models.
+
+(a) Employing one or more of the methods of model selection described in the text, develop a regression model to predict pitchers' salaries.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+baseball_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/BaseballPitchers.txt", header=TRUE)
+baseball_clean <- baseball_data %>% filter(!is.na(salary))
+baseball_clean$league86 <- as.factor(baseball_clean$league86)
+baseball_clean$league87 <- as.factor(baseball_clean$league87)
+baseball_clean$team86 <- as.factor(baseball_clean$team86)
+baseball_clean$team87 <- as.factor(baseball_clean$team87)
+```
+
+```{r}
+full_model <- lm(salary ~ league86 + team86 + W86 + L86 + ERA86 + G86 + IP86 + SV86 + years + 
+                  careerW + careerL + careerERA + careerG + careerIP + careerSV + league87 + team87,
+                data = baseball_clean)
+null_model <- lm(salary ~ 1, data = baseball_clean)
+```
+
+
+# Use AIC and BIC
+```{r}
+# Backward selection using AIC
+backward_aic <- step(full_model, direction = "backward", trace = FALSE)
+summary(backward_aic)$adj.r.squared
+AIC_backward <- AIC(backward_aic)
+AIC_backward
+
+# Backward selection using BIC
+backward_bic <- stepAIC(full_model, direction="backward", trace = FALSE, k=log(nrow(baseball_clean)))
+summary(backward_bic)$adj.r.squared
+BIC_backward <- BIC(backward_bic)
+BIC_backward
+```
+
+```{r}
+# Stepwise selection using AIC
+stepwise_aic <- step(null_model, 
+                      scope = list(lower = formula(null_model), 
+                                  upper = formula(full_model)),
+                      direction = "both",trace = FALSE)
+summary(stepwise_aic)$adj.r.squared
+AIC_stepwise <- AIC(stepwise_aic)
+AIC_stepwise
+
+# Stepwise selection using BIC
+stepwise_bic <- stepAIC(full_model, direction="both", trace = FALSE, k=log(nrow(baseball_clean)))
+summary(stepwise_bic)$adj.r.squared
+BIC_stepwise <- BIC(stepwise_bic)
+BIC_stepwise
+```
+AIC models explain more variance (higher R^2 value) but are more complex. BIC models are more parsimonious but explain less variance. 
+According to the model selection using AIC, the stepwise selection performed slightly better than backward selection for both AIC and BIC. The differences are small, but this suggests that some variables initially excluded in backward selection might be valuable predictors when considered in combination with others. 
+
+# final model
+```{r}
+summary(stepwise_aic)
+```
+
+
+:::
+
+(b) How successful is the model in predicting salaries? Does the model make substantive sense?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+# test for model's VIF value
+```{r}
+library(car)
+vif_results <- vif(stepwise_aic)
+print(vif_results)
+```
+From here, we can see that all six predictors have VIF value smaller than 5, which indicates that there is no possible issue for problematic multicollinearity.
+
+# use Cross-Validation
+```{r}
+library(caret)
+cv_results <- train(salary ~ years + careerERA + IP86 + team87 + careerSV + league87,
+                    data = baseball_clean,
+                    method = "lm",
+                    trControl = trainControl(method = "cv", number = 10))
+print(cv_results)
+```
+The model explains about 44% of the variance in pitcher salaries when applied to new data. This is lower than the adjusted R-squared of 0.4879 from the full model. MAE is lower than RMSE, indicating some large errors are increasing the RMSE.
+
+For the drop in R-squared, the cross-validation R-squared (0.4397) is about 9% lower than your model's adjusted R-squared (0.4879). This indicates some overfitting, but not severe.
+
+The cross-validation RMSE (299.17) is higher than the residual standard error from your full model (266.2), showing a roughly 12% increase in prediction error when applied to new data.
+
+For practical scenario, the average error (RMSE 300,000) needs to be interpreted relative to the typical salary range. If the average salary is around 600,000-800,000, this represents a substantial percentage error.
+:::
