@@ -1,0 +1,951 @@
+---
+title: "HW 5 Multilevel Models (MLMs) & Generalized Linear Mixed Models (GLMMs): Data Analysis Problems"
+subtitle: "Advanced Regression (STAT 353-0)"
+author: "Zihan Chu"
+pagetitle: "HW 5 Zihan Chu"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+    theme: cosmo
+
+execute:
+  warning: false
+
+from: markdown+emoji
+reference-location: margin
+citation-location: margin
+---
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+To link to your github **repo**sitory, appropriately edit the example link below. Meaning replace `https://your-github-repo-url` with your github repo url. Suggest verifying the link works before submitting.
+
+[https://github.com/karliechu1023/myrepo.git](https://github.com/karliechu1023/myrepo.git)
+
+:::
+
+::: {.callout-important}
+
+All students are required to complete this problem set!
+
+:::
+
+
+## Data analysis problems
+
+### 1. Exercise D23.2 (MLM)
+
+The file `Snijders.txt` contains data on 4,106 grade-8 students (who are approximately 11 years old) in 216 primary schools in the Netherlands. The data are used for several examples, somewhat different from the analysis that we will pursue below, by Snijders and Boskers in Multilevel Analysis, 2nd Edition (Sage, 2012).
+
+The data set includes the following variables:
+
+- `school`: a (non-consecutive) ID number indicating which school the student attends.
+- `iq`: the student's verbal IQ score, ranging from 4 to 18.5 (i.e., not traditionally scaled to a population mean of 100 and standard deviation of 15).
+- `test`: the student's score on an end-of-year language test, with scores ranging from 8 to 58.
+- `ses`: the socioeconomic status of the student's family, with scores ranging from 10 to 50.
+- `class.size`: the number of students in the student's class, ranging from 10 to 42; this variable is constant within schools, apparently reflecting the fact that all of the students in each school were in the same class.
+- `meanses`: the mean SES in the student's school, calculated from the data; the original data set included the school-mean SES, but this differed from the values that I computed directly from the data, possibly it was based on all of the students in the school.
+- `meaniq`: the mean IQ in the student's school, calculated (for the same reason) from the data.
+
+#### Data Prep
+
+There are some missing data, and I suggest that you begin by removing cases with missing data. How many students are lost when missing data are removed in this manner? Then create and add the following two variables to the data set:
+
+- `SES_c` : school-centred SES, computed as the difference between each student's SES and the mean of his or her school; and
+
+- `IQ_c` : school-centred IQ.
+
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(ggplot2)
+snijders <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/Snijders.txt")
+missing_counts <- colSums(is.na(snijders))
+snijders_complete <- na.omit(snijders)
+
+# Count how many students were lost due to missing data
+n_original <- nrow(snijders)
+n_complete <- nrow(snijders_complete)
+n_lost <- n_original - n_complete
+print(paste("Number of students lost due to missing data:", n_lost))
+```
+
+```{r}
+snijders_complete$SES_c <- snijders_complete$ses - snijders_complete$meanses
+snijders_complete$IQ_c <- snijders_complete$iq - snijders_complete$meaniq
+```
+There are 530 students lost when the missing data is removed from the original dataset.
+
+:::
+
+#### Part (a) 
+Examine scatterplots of students' test scores by centered SES and centred IQ for each of 20 randomly sampled schools. Do the relationships in the scatterplots seem reasonably linear? 
+
+*Hint: In interpreting these scatterplots, take into account the small number of students in each school, ranging from 4 to 34 in the full data set.*
+
+::: {.callout-tip icon="false"}
+## Solution
+
+# Plot Test Score vs. Centered SES, by School
+```{r}
+set.seed(123)
+all_schools <- unique(snijders_complete$school)
+sampled_schools <- sample(all_schools, 20)
+snijders_sample <- subset(snijders_complete, school %in% sampled_schools)
+
+ggplot(snijders_sample, aes(x = SES_c, y = test)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.8) +
+  facet_wrap(~ school) +
+  labs(
+    title = "Test Score vs. Centered SES for 20 Sampled Schools",
+    x = "Centered SES",
+    y = "Test Score"
+  ) +
+  theme_minimal()
+
+```
+
+# Plot Test Score vs. Centered IQ, by School
+```{r}
+ggplot(snijders_sample, aes(x = IQ_c, y = test)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue", size = 0.8) +
+  facet_wrap(~ school) +
+  labs(
+    title = "Test Score vs. Centered IQ for 20 Sampled Schools",
+    x = "Centered IQ",
+    y = "Test Score"
+  ) +
+  theme_minimal()
+
+```
+Because each school may only have a small number of students (ranging from 4 to 34 in the full dataset), the fitted lines can vary considerably and may not be highly precise.
+In many schools, there are no strong curvature, suggesting a roughly linear relationship. However, in some schools with very few students, the scatter may be too sparse to confidently rule out nonlinear patterns. Overall, with small within-school samples, the fitted lines may look “noisy,” but typically they do not suggest major deviations from linearity.
+:::
+
+#### Part (b) 
+Regress the students' test scores on centred SES and centred IQ within schools for the full dataset --- that is, compute a separate regression for each school. Then plot each set of coefficients (starting with the intercepts) against the schools' mean SES, mean IQ, and class size. Do the coefficients appear to vary systematically by the schools' characteristics (i.e., by the Level 2 explanatory variables centred SES, centred IQ, and class size)?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+school_regressions <- data.frame(
+  school = numeric(),
+  n_students = numeric(),
+  intercept = numeric(),
+  ses_coef = numeric(),
+  iq_coef = numeric(),
+  mean_ses = numeric(),
+  mean_iq = numeric(),
+  class_size = numeric()
+)
+
+# Run separate regression for each school
+for (s in all_schools) {
+  school_data <- subset(snijders_complete, school == s)
+  
+  # Only run regression if there are enough observations (at least 3)
+  if (nrow(school_data) >= 3) {
+    model <- lm(test ~ SES_c + IQ_c, data = school_data)
+    
+    intercept <- coef(model)[1]
+    ses_coef <- coef(model)[2]
+    iq_coef <- coef(model)[3]
+    
+    n_students <- nrow(school_data)
+    mean_ses <- school_data$meanses[1]  
+    mean_iq <- school_data$meaniq[1]  
+    class_size <- school_data$class.size[1]
+    
+    school_regressions <- rbind(school_regressions, data.frame(
+      school = s,
+      n_students = n_students,
+      intercept = intercept,
+      ses_coef = ses_coef,
+      iq_coef = iq_coef,
+      mean_ses = mean_ses,
+      mean_iq = mean_iq,
+      class_size = class_size
+    ))
+  }
+}
+
+```
+
+
+```{r, warning=FALSE}
+library(gridExtra)
+# Create plots for intercepts vs school characteristics
+p1 <- ggplot(school_regressions, aes(x = mean_ses, y = intercept)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Intercept vs Mean SES",
+       x = "School Mean SES", 
+       y = "Intercept") +
+  theme_minimal()
+
+p2 <- ggplot(school_regressions, aes(x = mean_iq, y = intercept)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Intercept vs Mean IQ",
+       x = "School Mean IQ", 
+       y = "Intercept") +
+  theme_minimal()
+
+p3 <- ggplot(school_regressions, aes(x = class_size, y = intercept)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Intercept vs Class Size",
+       x = "Class Size", 
+       y = "Intercept") +
+  theme_minimal()
+
+# Create plots for SES coefficients vs school characteristics
+p4 <- ggplot(school_regressions, aes(x = mean_ses, y = ses_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "SES Coefficient vs Mean SES",
+       x = "School Mean SES", 
+       y = "SES Coefficient") +
+  theme_minimal()
+
+p5 <- ggplot(school_regressions, aes(x = mean_iq, y = ses_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "SES Coefficient vs Mean IQ",
+       x = "School Mean IQ", 
+       y = "SES Coefficient") +
+  theme_minimal()
+
+p6 <- ggplot(school_regressions, aes(x = class_size, y = ses_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "SES Coefficient vs Class Size",
+       x = "Class Size", 
+       y = "SES Coefficient") +
+  theme_minimal()
+
+# Create plots for IQ coefficients vs school characteristics
+p7 <- ggplot(school_regressions, aes(x = mean_ses, y = iq_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "IQ Coefficient vs Mean SES",
+       x = "School Mean SES", 
+       y = "IQ Coefficient") +
+  theme_minimal()
+
+p8 <- ggplot(school_regressions, aes(x = mean_iq, y = iq_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "IQ Coefficient vs Mean IQ",
+       x = "School Mean IQ", 
+       y = "IQ Coefficient") +
+  theme_minimal()
+
+p9 <- ggplot(school_regressions, aes(x = class_size, y = iq_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "IQ Coefficient vs Class Size",
+       x = "Class Size", 
+       y = "IQ Coefficient") +
+  theme_minimal()
+
+# Arrange plots in a grid
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, p8, p9, ncol = 3,
+             top = "Relationships Between Regression Coefficients and School Characteristics")
+
+# Calculate correlations to quantify these relationships
+cor_intercept <- cor(school_regressions[, c("mean_ses", "mean_iq", "class_size", "intercept")])
+cor_ses_coef <- cor(school_regressions[, c("mean_ses", "mean_iq", "class_size", "ses_coef")])
+cor_iq_coef <- cor(school_regressions[, c("mean_ses", "mean_iq", "class_size", "iq_coef")])
+
+# Print correlation tables
+print("Correlations with Intercept:")
+print(cor_intercept[1:3, 4, drop = FALSE])
+
+print("Correlations with SES Coefficient:")
+print(cor_ses_coef[1:3, 4, drop = FALSE])
+
+print("Correlations with IQ Coefficient:")
+print(cor_iq_coef[1:3, 4, drop = FALSE])
+```
+The most pronounced relationship is between mean IQ and intercept, suggesting that school-average IQ is a strong predictor of baseline test performance. Mean SES also has a moderate positive effect on the intercept. The effects of individual-level variables (SES_c and IQ_c) show some variation by school characteristics, but these relationships are generally weak to moderate. Class size shows minimal influence on any of the regression coefficients.
+They do not vary significantly between different characteristics.
+
+
+
+:::
+
+#### Part (c) 
+Fit linear mixed-effects models to the Snijders and Boskers data, proceeding as follows:
+
+- Begin with a one-way random-effects ANOVA of test scores by schools. What proportion of the total variation in test scores among students is between schools (i.e., what is the intra-class correlation)?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(lme4)
+library(lmerTest)
+library(sjPlot)   
+library(ggplot2)
+library(dplyr)
+```
+
+
+```{r}
+null_model <- glmer(test ~ 1 + (1|school), data = snijders_complete)
+summary(null_model)
+
+model_summary <- summary(null_model)
+random_effects <- as.data.frame(VarCorr(null_model))
+variance_between <- random_effects$vcov[1]  # Between-school variance
+variance_within <- attr(VarCorr(null_model), "sc")^2  # Within-school variance
+ICC <- variance_between / (variance_between + variance_within)
+print(paste("Intraclass Correlation Coefficient (ICC):", round(ICC, 4)))
+print(paste("Proportion of variance between schools:", round(ICC*100, 2), "%"))
+print(paste("Between-school variance:", round(variance_between, 2)))
+print(paste("Within-school variance:", round(variance_within, 2)))
+print(paste("Total variance:", round(variance_between + variance_within, 2)))
+```
+Proportion of variance between schools is 22.69 % 
+:::
+
+- Fit a random-coefficients regression of test scores on the students' centered SES and centered IQ. Initially include random effects for the intercept and both explanatory variables. Test whether each of these random effects is needed, and eliminate from the model those that are not (if any are not). How, if at all, are test scores related to the explanatory variables?^[Note: You may obtain a convergence warning in fitting one or more of the null models that remove variance and covariance components; this warning should not prevent you from performing the likelihood-ratio test for the corresponding random effects.]
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+full_random_model <- lmer(test ~ SES_c + IQ_c + 
+                        (1 + SES_c + IQ_c|school), 
+                      data = snijders_complete,
+                      control = lmerControl(optimizer = "bobyqa"))
+summary(full_random_model)
+
+# Test whether each random effect is needed
+# Model with only random intercept
+random_int_only <- lmer(test ~ SES_c + IQ_c + (1|school),
+                      data = snijders_complete)
+
+# Model with random intercept and random SES slope
+random_int_SES <- lmer(test ~ SES_c + IQ_c + (1 + SES_c|school),
+                     data = snijders_complete)
+
+# Model with random intercept and random IQ slope
+random_int_IQ <- lmer(test ~ SES_c + IQ_c + (1 + IQ_c|school),
+                    data = snijders_complete)
+
+# Compare models
+anova(random_int_only, random_int_SES, random_int_IQ, full_random_model)
+```
+Looking at the AIC values, the random_int_IQ model has the lowest AIC (23595), indicating it's the best fitting model among the four.
+Comparing random_int_only to random_int_SES, the Chi-square test shows a non-significant p-value (0.4268), meaning that adding random slopes for SES_c doesn't significantly improve the model fit.
+The comparison between random_int_IQ and full_random_model shows a very high p-value (0.9998), indicating that adding random slopes for SES_c on top of random intercepts and random IQ slopes doesn't improve the model.
+The degrees of freedom column shows 0 for the random_int_IQ comparison, which is unusual and could indicate an estimation issue, but given the substantial improvement in AIC compared to random_int_only, the random IQ slopes still appear to be important.
+
+Therefore, the best model is random_int_IQ, which includes random intercepts and random slopes for IQ_c. 
+
+:::
+
+- Introduce mean school SES, mean school IQ, and class size as Level 2 explanatory variable, but only for the Level 1 coefficients that were found to vary significantly among schools in the random-coefficients model. 
+
+    *Hint: Recall that modeling variation in Level 1 coefficients by Level 2 explanatory variables implies the inclusion of cross-level interactions in the model; and don't forget that the intercepts are Level 1 coefficients that may depend on Level 2 explanatory variables. It may well help to write down the mixed-effects model first in hierarchical form and then in Laird-Ware form.* 
+    
+    Test whether the random effects that you retained in the random-coefficients model are still required now that there are Level 2 predictors in the model.^[Note: Again, you may obtain a convergence warning.]
+    
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+level2_model <- lmer(test ~ SES_c + IQ_c + 
+                    meanses + meaniq + class.size +
+                    IQ_c:meanses + IQ_c:meaniq + IQ_c:class.size +
+                    (1 + IQ_c | school),
+                    data = snijders_complete)
+
+summary(level2_model)
+```
+
+```{r}
+# Test if random effects are still required with Level 2 predictors
+reduced_random_model <- lmer(test ~ SES_c + IQ_c + 
+                           meanses + meaniq + class.size +
+                           IQ_c:meanses + IQ_c:meaniq + IQ_c:class.size +
+                           (1 | school),
+                           data = snijders_complete)
+anova(reduced_random_model, level2_model)
+```
+SES_c is highly significant (p < 2e-16) with a positive effect (0.174). IQ_c is significant (p = 0.00154) with a positive effect (3.071). meaniq is highly significant (p < 2e-16) with a positive effect (3.515). meanses is marginally significant (p = 0.0521) with a positive effect (0.090)
+class.size is not significant (p = 0.6304). All cross-level interactions (IQ_c:meanses, IQ_c:meaniq, IQ_c:class.size) are not significant, though IQ_c:meanses shows a marginal trend (p = 0.0902).
+
+The comparison between models with and without random slopes for IQ_c shows a highly significant chi-square value (23.394, p = 8.32e-06)
+This indicates that the random slopes for IQ_c should be retained in the model, even after including Level 2 predictors.
+
+:::
+
+- Compute tests of the various main effects and interactions in the coefficients-as-outcomes model. Then simplify the model by removing any fixed-effects terms that are nonsignificant. Finally, interpret the results obtained for the simplified model. If your final model includes interactions, you may wish to construct effect displays to visualize the interactions.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+simplified_model <- lmer(test ~ SES_c + IQ_c + 
+                        meanses + meaniq + 
+                        IQ_c:meanses +
+                        (1 + IQ_c | school),
+                        data = snijders_complete)
+
+summary(simplified_model)
+
+# Compare to ensure our simplification doesn't harm model fit
+anova(simplified_model, level2_model)
+```
+
+The comparison between the full model (with class size and all interactions) and the simplified model shows no significant difference (p = 0.9217), confirming that removing class.size and its related interactions did not harm model fit. The simplified model has a lower AIC, indicating it's more parsimonious.
+
+For fixed effects:
+For each one-unit increase in a student's SES relative to their school mean, test scores increase by 0.17 points on average.
+For each one-unit increase in a student's IQ relative to their school mean, test scores increase by 2.86 points on average (at mean school SES).
+Schools with higher average SES tend to have higher test scores, with each one-unit increase in school mean SES associated with a 0.09 point increase in average test scores. School mean IQ has a substantial effect on test scores, with each one-unit increase in school mean IQ associated with a 3.49 point increase in average test scores.The negative coefficient indicates that the positive effect of individual IQ is slightly weaker in schools with higher mean SES. For each one-unit increase in school mean SES, the effect of individual IQ decreases by 0.023 points.
+
+For random effects:
+Substantial variation exists in average test scores across schools, even after accounting for the fixed effects
+The effect of student IQ on test scores varies significantly across schools. This variation is not fully explained by the school-level variables included in the model.
+Schools with higher average test scores tend to have weaker effects of individual IQ, and this suggests potential ceiling effects or different educational approaches in higher-performing schools.
+Residual variance: 37.05. This represents the unexplained variation in test scores within schools
+
+```{r}
+# visualize interaction
+library(ggplot2)
+ses_levels <- quantile(snijders_complete$meanses, probs = c(0.25, 0.5, 0.75))
+names(ses_levels) <- c("Low SES", "Medium SES", "High SES")
+
+newdata <- expand.grid(
+  IQ_c = seq(min(snijders_complete$IQ_c), max(snijders_complete$IQ_c), length.out = 100),
+  meanses = ses_levels,
+  SES_c = 0,  # Set at mean
+  meaniq = mean(snijders_complete$meaniq)  # Set at mean
+)
+
+newdata$predicted <- predict(simplified_model, newdata = newdata, re.form = NA)
+ggplot(newdata, aes(x = IQ_c, y = predicted, color = factor(meanses))) +
+  geom_line(size = 1) +
+  labs(title = "Interaction between Student IQ and School Mean SES",
+       x = "Student-Centered IQ",
+       y = "Predicted Test Score",
+       color = "School Mean SES") +
+  scale_color_discrete(labels = names(ses_levels)) +
+  theme_minimal()
+```
+
+
+:::
+
+
+### 2. Exercise D23.2 (Binary version)
+
+Repeat Problem (1) but now, instead of using `test` as the outcome, you will use a dichotomized version. To do so, create a new variable called `high_pass` that indicates if a student receives a score of 90% or above. Please include all parts except the scatterplots of test scores by centered SES and IQ.
+
+Pay particular attention to interpretation and to how your results compare with those based on the continuous version. Are your results similar or do they differ? Explain why or why not.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+percentile_90 <- quantile(snijders_complete$test, 0.90)
+snijders_complete$high_pass <- ifelse(snijders_complete$test >= percentile_90, 1, 0)
+```
+
+
+# repeat part(b)
+```{r}
+unique_schools <- unique(snijders_complete$school)
+school_regressions_binary <- data.frame(
+  school = numeric(),
+  n_students = numeric(),
+  intercept = numeric(),
+  ses_coef = numeric(),
+  iq_coef = numeric(),
+  mean_ses = numeric(),
+  mean_iq = numeric(),
+  class_size = numeric()
+)
+
+for (s in unique_schools) {
+  school_data <- subset(snijders_complete, school == s)
+  # Only run regression if there are enough observations and variation in outcome
+  if (nrow(school_data) >= 5 && 
+      length(unique(school_data$high_pass)) > 1 && 
+      sum(school_data$high_pass) >= 2 && 
+      sum(school_data$high_pass) <= nrow(school_data) - 2) {
+
+    tryCatch({
+      model <- glm(high_pass ~ SES_c + IQ_c, 
+                   data = school_data, 
+                   family = binomial)
+      
+      intercept <- coef(model)[1]
+      ses_coef <- coef(model)[2]
+      iq_coef <- coef(model)[3]
+
+      n_students <- nrow(school_data)
+      mean_ses <- school_data$meanses[1]  # Already constant within school
+      mean_iq <- school_data$meaniq[1]    # Already constant within school
+      class_size <- school_data$class.size[1]
+
+      school_regressions_binary <- rbind(school_regressions_binary, data.frame(
+        school = s,
+        n_students = n_students,
+        intercept = intercept,
+        ses_coef = ses_coef,
+        iq_coef = iq_coef,
+        mean_ses = mean_ses,
+        mean_iq = mean_iq,
+        class_size = class_size
+      ))
+    }, error = function(e) {
+      cat("Error in school", s, ":", e$message, "\n")
+    })
+  }
+}
+
+```
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+# Create plots for intercepts vs school characteristics
+p1 <- ggplot(school_regressions_binary, aes(x = mean_ses, y = intercept)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Intercept vs Mean SES (Binary)",
+       x = "School Mean SES", 
+       y = "Intercept (log-odds)") +
+  theme_minimal()
+
+p2 <- ggplot(school_regressions_binary, aes(x = mean_iq, y = intercept)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Intercept vs Mean IQ (Binary)",
+       x = "School Mean IQ", 
+       y = "Intercept (log-odds)") +
+  theme_minimal()
+
+p3 <- ggplot(school_regressions_binary, aes(x = class_size, y = intercept)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Intercept vs Class Size (Binary)",
+       x = "Class Size", 
+       y = "Intercept (log-odds)") +
+  theme_minimal()
+
+# Create plots for SES coefficients vs school characteristics
+p4 <- ggplot(school_regressions_binary, aes(x = mean_ses, y = ses_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "SES Coefficient vs Mean SES (Binary)",
+       x = "School Mean SES", 
+       y = "SES Coefficient (log-odds)") +
+  theme_minimal()
+
+p5 <- ggplot(school_regressions_binary, aes(x = mean_iq, y = ses_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "SES Coefficient vs Mean IQ (Binary)",
+       x = "School Mean IQ", 
+       y = "SES Coefficient (log-odds)") +
+  theme_minimal()
+
+p6 <- ggplot(school_regressions_binary, aes(x = class_size, y = ses_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "SES Coefficient vs Class Size (Binary)",
+       x = "Class Size", 
+       y = "SES Coefficient (log-odds)") +
+  theme_minimal()
+
+# Create plots for IQ coefficients vs school characteristics
+p7 <- ggplot(school_regressions_binary, aes(x = mean_ses, y = iq_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "IQ Coefficient vs Mean SES (Binary)",
+       x = "School Mean SES", 
+       y = "IQ Coefficient (log-odds)") +
+  theme_minimal()
+
+p8 <- ggplot(school_regressions_binary, aes(x = mean_iq, y = iq_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "IQ Coefficient vs Mean IQ (Binary)",
+       x = "School Mean IQ", 
+       y = "IQ Coefficient (log-odds)") +
+  theme_minimal()
+
+p9 <- ggplot(school_regressions_binary, aes(x = class_size, y = iq_coef)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "IQ Coefficient vs Class Size (Binary)",
+       x = "School Mean IQ", 
+       y = "IQ Coefficient (log-odds)") +
+  theme_minimal()
+
+# Arrange plots in a grid
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, p8, p9, ncol = 3,
+             top = "Relationships Between Binary Regression Coefficients and School Characteristics")
+```
+
+
+
+
+# repeat part(c)
+```{r}
+# Step 1: One-way random-effects ANOVA 
+null_model_binary <- glmer(high_pass ~ 1 + (1|school), 
+                          data = snijders_complete, 
+                          family = binomial)
+summary(null_model_binary)
+var_school <- as.data.frame(VarCorr(null_model_binary))$vcov[1]
+ICC_binary <- var_school / (var_school + 3.29)
+print(paste("Intraclass Correlation Coefficient (ICC):", round(ICC_binary, 4)))
+print(paste("Proportion of variance between schools:", round(ICC_binary*100, 2), "%"))
+```
+The proportion of variance between schools (14.39%)  is smaller than nonbinary case (22.69%).
+
+
+```{r}
+# Step 2: Fit random-coefficients regression models
+# Model with only random intercept
+random_int_only <- glmer(high_pass ~ SES_c + IQ_c + (1|school),
+                      data = snijders_complete,
+                      family = binomial)
+
+# Model with random intercept and random SES slope
+random_int_SES <- glmer(high_pass ~ SES_c + IQ_c + (1 + SES_c|school),
+                     data = snijders_complete,
+                     family = binomial,
+                     control = glmerControl(optimizer = "bobyqa"))
+
+# Model with random intercept and random IQ slope
+random_int_IQ <- glmer(high_pass ~ SES_c + IQ_c + (1 + IQ_c|school),
+                    data = snijders_complete,
+                    family = binomial,
+                    control = glmerControl(optimizer = "bobyqa"))
+
+# Full model with random effects for intercept and both slopes
+full_random_model <- glmer(high_pass ~ SES_c + IQ_c + (1 + SES_c + IQ_c|school),
+                        data = snijders_complete,
+                        family = binomial,
+                        control = glmerControl(optimizer = "bobyqa"))
+
+# Compare models to determine best random effects structure
+anova(random_int_only, random_int_SES, random_int_IQ, full_random_model)
+```
+interpretation of the binary model: 
+The simplest model (random_int_only) with just random intercepts has the lowest AIC (2149.9) and BIC (2174.7), suggesting it's the most parsimonious fit. Adding random slopes for SES_c doesn't significantly improve the model. Similarly, adding random slopes for IQ_c (random_int_IQ) doesn't significantly improve the model. The full random model with both random slopes also doesn't provide a significant improvement.
+
+Comparison:
+1. For the continuous outcome (test scores), the model with random intercepts and random slopes for IQ_c was clearly superior.For the binary outcome (high_pass), the simplest model with only random intercepts fits best.
+2. In the continuous model, there was significant variation in how IQ_c affected test scores across schools. In the binary model, we don't see significant variation in how SES_c or IQ_c affects the probability of high achievement across schools.
+3. The continuous model showed good convergence properties. The binary model shows convergence issues, indicating less stability in parameter estimation.
+4. The continuous model examines factors affecting overall test performance. The binary model focuses specifically on factors influencing exceptional achievement (top 10%).Binary outcomes generally provide less statistical power than continuous ones.
+
+
+```{r}
+# Step 3: Introduce Level 2 explanatory variables
+level2_model_binary <- glmer(high_pass ~ SES_c + IQ_c + 
+                           meanses + meaniq + class.size +
+                           (1 | school),
+                           data = snijders_complete,
+                           family = binomial)
+summary(level2_model_binary)
+# Since we're not including random slopes for IQ_c, we don't need to model cross-level interactions for the IQ_c slope
+```
+From the summary, we can see that SES_c, IQ_c, intercept, meaniq are significant in the regression model.The variance of random intercepts across schools is 0.6289 (SD = 0.793). This indicates moderate variation in high achievement rates across schools after accounting for the fixed effects
+
+
+
+```{r}
+# Step 4: Test if random effects are still required
+fixed_only_model <- glm(high_pass ~ SES_c + IQ_c + 
+                      meanses + meaniq + class.size,
+                      data = snijders_complete,
+                      family = binomial)
+
+AIC(level2_model_binary, fixed_only_model)
+BIC(level2_model_binary, fixed_only_model)
+```
+The model with random intercepts (level2_model_binary, AIC = 2108.292) outperforms the fixed-effects-only model (AIC = 2163.652). This confirms that school-level random effects are still required even after including school-level predictors
+
+The difference between Q1:
+1.School mean SES: Continuous model has significant positive effect (p = 0.0498). Binary model is not significant (p = 0.272)
+2.Random effects structure: Continuous model:required both random intercepts and random slopes for IQ_c. Binary model only require random intercepts.
+3. Cross-level interactions: Continuous model has significant interaction between IQ_c and meanses. Binary model has no cross-level interactions were tested as they weren't justified by the random effects structure
+4. Effect magnitude: The relative importance of IQ (both individual and school-level) appears stronger in the binary model compared to SES.
+
+
+```{r}
+# Step 5: Simplify the model by removing non-significant fixed effects
+simplified_model2 <- glmer(high_pass ~ SES_c + IQ_c + 
+                          meaniq +
+                          (1 | school),
+                          data = snijders_complete,
+                          family = binomial)
+anova(simplified_model2, level2_model_binary)
+# Final model
+final_binary_model <- simplified_model2
+summary(final_binary_model)
+```
+The comparison between the full model (level2_model_binary) and the simplified model (simplified_model2) shows that removing the non-significant predictors doesn't significantly harm model fit. The simplified model has a lower AIC and BIC, indicating it's better than the original one.
+
+Interpretation of the summary:
+Fixed Effects:
+1. Intercept has a really small p-value, indicating that the baseline log-odds of achieving high pass is very low when all predictors are at zero
+2. SES_c has a really small p-value, showing that higher individual SES relative to school mean increases the probability of high achievement.For each one-unit increase in student-centered SES (SES_c), the odds of achieving high pass increase by approximately 5.7%
+3. IQ_c: there is a significant positive effect, demonstrating that higher individual IQ relative to school mean substantially increases the probability of high achievement.For each one-unit increase in student-centered IQ (IQ_c), the odds of achieving high pass increase by approximately 74%
+4. meaniq: it has a significant positive effect, indicating that schools with higher average IQ have higher rates of high achievement.For each one-unit increase in school mean IQ (meaniq), the odds of achieving high pass increase by approximately 114%
+
+Random Effects:
+The variance of random intercepts across schools is 0.6369 (SD = 0.7981), which indicates significant variation in baseline probabilities of high achievement across schools after accounting for the fixed effects
+
+Comparison with the continuous model:
+1.School mean SES (meanses):Significant in the continuous model but not in the binary model. This suggests that school socioeconomic context affects average performance but not necessarily exceptional achievement
+2. Random effects structure: Continuous model required both random intercepts and random slopes for IQ_c, but binary model only needs random intercepts.
+3. Cross-level interactions: Continuous model has significant interaction between IQ_c and meanses. Binary model has no cross-level interactions due to simpler random effects structure.
+4. Relative importance of predictors: In the binary model, both individual and school-level IQ have stronger effects relative to SES.This suggests cognitive factors are more crucial for exceptional achievement than socioeconomic factors.
+
+Reasons behind the differences:
+1. The results suggest that reaching exceptional achievement (90th percentile) is more strongly determined by cognitive factors (individual and school-average IQ) than socioeconomic factors. In contrast, general academic performance is influenced by both cognitive and socioeconomic factors.
+2. The simpler random effects structure in the binary model suggests that what drives exceptional performance is more consistent across different school contexts than what drives overall performance.
+:::
+
+### 3. Exercise D23.3 (Longitudinal)
+
+Laird and Fitzmaurice ("Longitudinal Data Modeling," in Scott, Simonoff, and Marx, eds., The SAGE Handbook of Multilevel Modeling, Sage, 2013) analyze longitudinal data from the MIT Growth and Development Study on the change over time of percent body fat in 162 girls before and after menarch (age at first mentruation). The data are in the file `Phillips.txt`
+
+- `subject`: subject ID number, 1---162.
+
+- `age`: age (in years) at the time of measurement; the girls are measured at different ages, and although the measurements are approximately taken annually, the ages are not generally whole numbers.
+
+- `menarche`: age at menarch (constant within subjects).
+
+- `age.adjusted`: age − age at menarch.
+
+- `body.fat`: percentage body fat at the time of measurement.
+
+Laird and Fitzmaurice fit a linear mixed-effects model to the data,
+
+$$
+Y_{ij} = \beta_1 +\beta_2 t_{ij-}+\beta _3 t_{ij+}+\delta _{1i}+\delta _{2i}t_{ij-}+\delta _{3i}t_{ij+}+\epsilon _{ij}  
+$$
+
+where
+
+- $Y_{ij}$ is the body-fat measurement for girl $i$ on occasion $j$;
+
+- $t_{ij-}$ is adjusted age prior to menarche and 0 thereafter;
+
+- $t_{ij+}$ is adjusted age after menarche and 0 before;
+
+- $\beta_1, \beta_2, \beta_3$ are fixed effects; and
+
+- $\delta_{1i}, \delta_{2i}, \delta_{3i}$ are subject-specific random effects.
+
+#### Part (a) 
+Examine the data by plotting body fat versus adjusted age for all of the girls simultaneously; following Laird and Fitzmaurice, add a lowess smooth to the scatterplot. Now randomly select a subset (say, 30) of the girls and plot body fat versus adjusted age separately for each of the selected girls. What can you say about the apparent relationship between body fat and age before and after menarche? Is Laird and Fitzmaurice's model reasonable given your exploration of the data? Explain what each fixed-effect and random-effect coefficient in the model represents.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r}
+phillips_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/Phillips.txt", header=TRUE)
+
+# Plot body fat versus adjusted age for all girls with a lowess smoother
+all_girls_plot <- ggplot(phillips_data, aes(x = age.adjusted, y = body.fat)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(title = "Body Fat vs. Adjusted Age",
+       x = "Adjusted Age",
+       y = "Body Fat Percentage") +
+  theme_minimal()
+
+print(all_girls_plot)
+```
+The overall scatterplot has a clear non-linear relationship between body fat percentage and adjusted age relative to menarche. The pattern shows a relatively flat or slightly increasing trend in body fat before menarche, and a steeper increase in body fat after menarche. There are considerable individual variation across all ages, with body fat percentages ranging from near 0% to about 45%
+
+```{r, warning=FALSE}
+# Randomly select 30 girls
+set.seed(123)
+selected_subjects <- sample(unique(phillips_data$subject), 30)
+
+selected_data <- phillips_data %>% 
+  filter(subject %in% selected_subjects)
+
+individual_plots <- ggplot(selected_data, aes(x = age.adjusted, y = body.fat)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE) +
+  facet_wrap(~ subject, ncol = 5) +
+  labs(title = "Body Fat vs. Adjusted Age (30 randomly selected girls)",
+       x = "Adjusted Age",
+       y = "Body Fat Percentage") +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 8),
+        axis.text = element_text(size = 6))
+
+print(individual_plots)
+```
+Substantial individual variability in both baseline body fat percentage and trajectories over time. Despite this variability, many girls show similar patterns: a relatively modest change before menarche followed by more pronounced increases after menarche.
+
+```{r}
+model <- lmer(body.fat ~ 1 + 
+                I(age.adjusted * (age.adjusted < 0)) + 
+                I(age.adjusted * (age.adjusted >= 0)) + 
+                (1 + I(age.adjusted * (age.adjusted < 0)) + 
+                   I(age.adjusted * (age.adjusted >= 0)) | subject), 
+              data = phillips_data)
+
+summary(model)
+
+fixed_effects <- fixef(model)
+phillips_data$predicted <- fixed_effects[1] + 
+  fixed_effects[2] * (phillips_data$age.adjusted * (phillips_data$age.adjusted < 0)) +
+  fixed_effects[3] * (phillips_data$age.adjusted * (phillips_data$age.adjusted >= 0))
+
+model_plot <- ggplot(phillips_data, aes(x = age.adjusted, y = body.fat)) +
+  geom_point(alpha = 0.5) +
+  geom_line(aes(y = predicted), color = "red", linewidth = 1) +
+  geom_smooth(method = "loess", se = TRUE, color = "blue", linetype = "dashed") +
+  labs(title = "Body Fat vs. Adjusted Age with Model Fit",
+       x = "Adjusted Age (years relative to menarche)",
+       y = "Body Fat Percentage",
+       caption = "Red line: Mixed-effects model fit, Blue dashed line: Loess smooth") +
+  theme_minimal()
+
+print(model_plot)
+```
+The average slope before menarche is -0.5135479, which indicates that, on average, body fat percentage slightly decreases as girls approach menarche. 
+The average slope after menarche is 2.035952. This positive and much larger slope indicates a substantial increase in body fat percentage after menarche. The magnitude is approximately four times greater than the pre-menarche slope, showing a dramatic change in body fat accumulation patterns
+
+Based on the fitted model results, the model's fixed effects show a significant positive slope before menarche and a much larger positive slope after menarche.The fitted model closely follows the observed pattern in the data, capturing the change in trajectory at menarche. Besides, the model captures both the fixed population-level effects and the substantial random individual variations through random effects. The variance components show considerable between-subject variability, supporting the need for a mixed-effects approach.
+
+```{r}
+before_menarche <- phillips_data %>%
+  filter(age.adjusted < 0) %>%
+  group_by(subject) %>%
+  mutate(n = n()) %>%
+  filter(n >= 2) %>%
+  summarize(avg_slope = tryCatch({
+    coef(lm(body.fat ~ age.adjusted))[2]
+  }, error = function(e) {
+    NA
+  }))
+
+after_menarche <- phillips_data %>%
+  filter(age.adjusted >= 0) %>%
+  group_by(subject) %>%
+  mutate(n = n()) %>%
+  filter(n >= 2) %>%
+  summarize(avg_slope = tryCatch({
+    coef(lm(body.fat ~ age.adjusted))[2]
+  }, error = function(e) {
+    NA
+  }))
+
+# Remove NA values
+cat("Average slope before menarche:", mean(before_menarche$avg_slope, na.rm = TRUE), "\n")
+cat("Average slope after menarche:", mean(after_menarche$avg_slope, na.rm = TRUE), "\n")
+
+cat("Number of subjects with valid slopes before menarche:", sum(!is.na(before_menarche$avg_slope)), "\n")
+cat("Number of subjects with valid slopes after menarche:", sum(!is.na(after_menarche$avg_slope)), "\n")
+```
+beta1, beta2 and beta3 represent the fixed effects. beta 1 represents the baseline body fat percentage, beta 2 accounts for the rate of body fat change before menarche, and beta 3 accounts for the rate of body fat change after menarche.
+delta 1, delta2 and delta3 represents random-effects. Delta 1 represents individual variation in body fat percentage at menarche. Delta 2 represents individual variation in rate of change before menarche. Delta 3 represents individual variation in rate of change after menarche.
+
+Conclusion:
+Laird and Fitzmaurice's mixed-effects model is reasonable and appropriate for this data. It effectively captures the non-linear relationship between body fat and adjusted age, with a distinct change at menarche. The substantial individual variation revealed in both the visual analysis and the model's random effects highlights the importance of using a mixed-effects approach rather than a simpler fixed-effects model. 
+
+:::
+
+#### Part (b) 
+Fit the mixed-effects model as specified by Laird and Fitzmaurice. What do you conclude? Consider the possibility of dropping each of the random effects from the model.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r}
+phillips_data <- phillips_data %>%
+  mutate(
+    t_minus = ifelse(age.adjusted < 0, age.adjusted, 0),
+    t_plus = ifelse(age.adjusted >= 0, age.adjusted, 0)
+  )
+
+# Full model with all random effects
+full_model <- lmer(body.fat ~ 1 + t_minus + t_plus + 
+                   (1 + t_minus + t_plus | subject), 
+                 data = phillips_data)
+print(summary(full_model))
+```
+
+```{r}
+# Model without random intercept
+model_no_ri <- lmer(body.fat ~ 1 + t_minus + t_plus + 
+                     (0 + t_minus + t_plus | subject), 
+                   data = phillips_data, REML = TRUE)
+
+# Model without random slope for before menarche
+model_no_rs_before <- lmer(body.fat ~ 1 + t_minus + t_plus + 
+                            (1 + t_plus | subject), 
+                          data = phillips_data, REML = TRUE)
+
+# Model without random slope for after menarche
+model_no_rs_after <- lmer(body.fat ~ 1 + t_minus + t_plus + 
+                           (1 + t_minus | subject), 
+                         data = phillips_data, REML = TRUE)
+
+cat("\nLikelihood Ratio Tests:\n")
+cat("\nComparing full model vs. model without random intercept:\n")
+anova(full_model, model_no_ri)
+
+cat("\nComparing full model vs. model without random slope before menarche:\n")
+anova(full_model, model_no_rs_before)
+
+cat("\nComparing full model vs. model without random slope after menarche:\n")
+anova(full_model, model_no_rs_after)
+```
+
+```{r}
+# Get AIC and BIC for all models
+models <- list(
+  full = full_model,
+  no_ri = model_no_ri,
+  no_rs_before = model_no_rs_before,
+  no_rs_after = model_no_rs_after
+)
+
+comparison_table <- data.frame(
+  Model = c("Full Model", "No Random Intercept", "No Random Slope Before", "No Random Slope After"),
+  AIC = sapply(models, AIC),
+  BIC = sapply(models, BIC),
+  logLik = sapply(models, logLik)
+)
+
+cat("\nModel Comparison Table:\n")
+print(comparison_table)
+```
+
+:::
