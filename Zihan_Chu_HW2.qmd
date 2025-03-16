@@ -1,0 +1,516 @@
+---
+title: "HW 2: Generalized Linear Models"
+subtitle: "Advanced Regression (STAT 353-0)"
+author: "Zihan Chu"
+pagetitle: "HW 2 Zihan Chu"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+    theme: cosmo
+
+execute:
+  warning: false
+
+from: markdown+emoji
+reference-location: margin
+citation-location: margin  
+---
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+To link to your github **repo**sitory, appropriately edit the example link below. Meaning replace `https://your-github-repo-url` with your github repo url. Suggest verifying the link works before submitting.
+
+[https://github.com/karliechu1023/myrepo.git](https://github.com/karliechu1023/myrepo.git)
+
+:::
+
+
+## Data analysis
+
+### Exercise D14.1 (Dichotomous)
+
+For this question, we will use the `Chile.txt` dataset, which has a polytomous outcome: voting intention (yes, no, abstain, undecided). For this problem, focus only on the subset of the data with outcomes of either 'yes' or 'no'.
+
+(a) Formulate a model that makes substantive sense in the context of the data set - for example,constructing dummy regressors to represent factors and including interaction regressors where these are appropriate - and fit a linear logistic regression of the response variable on the explanatory variables, reporting the estimated regression coefficients and their asymptotic standard errors.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(dplyr)
+
+chile_data <- read.delim("https://www.john-fox.ca/AppliedRegression/datasets/Chile.txt")
+filtered_data <- chile_data %>%
+  filter(vote %in% c("Y", "N"))
+
+filtered_data$vote_binary <- ifelse(filtered_data$vote == "Y", 1, 0)
+filtered_data$region <- as.factor(filtered_data$region)
+filtered_data$education <- as.factor(filtered_data$education)
+filtered_data$sex <- as.factor(filtered_data$sex)
+```
+
+
+```{r}
+logistic_model <- glm(
+  vote_binary ~ region + education + income + age + income:education,
+  data = filtered_data,
+  family = binomial(link = "logit")
+)
+
+summary(logistic_model)
+
+coeff <- summary(logistic_model)$coefficients
+print(coeff)
+
+library(pscl)
+pR2(logistic_model)
+```
+We can see that regionM, regionN, regionS, educationPS, educationS and age have statistically significant p-value, which means they significantly associated with the response. Income itself was not significant, nor were the interaction terms with education. This suggests that income may not have a strong independent or interactive effect on voting intention in this model. 
+
+For the model fit, the reduction in deviance (138.5) is substantial, suggesting that the explanatory variables significantly improve the model.
+
+:::
+
+(b) Construct an analysis-of-deviance table for the model fit in part (a).
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(tidyr)
+cleaned_data <- filtered_data %>% drop_na()
+null_model <- glm(vote_binary ~ 1, data = cleaned_data, family = binomial(link = "logit"))
+full_model <- glm(
+  vote_binary ~ region + education + income + age + income:education,
+  data = cleaned_data,
+  family = binomial(link = "logit")
+)
+
+anova_table <- anova(null_model, full_model, test = "Chisq")
+print(anova_table)
+```
+The deviance difference (137.09) between two models is highly significant, as indicated by the chi-square test. This confirms that the full model provides a significantly better fit to the data than the null model.
+:::
+
+(c) Fit a final model to the data that includes the statistically significant effects. Construct an effect display for each high-order term in the model, if your model includes them. If the model is additive, (i) suggest two interpretations of each estimated coefficient; and (ii) construct likelihood-ratio-based 95- percent confidence intervals for the regression coefficients, comparing these with confidence intervals based on the Wald statistic.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(effects)
+
+final_model <- glm(
+  vote_binary ~ region + education + age, 
+  data = cleaned_data,
+  family = binomial(link = "logit")
+)
+
+effect_plots <- allEffects(final_model)
+plot(effect_plots)
+
+summary(final_model)  # Review coefficients
+wald_ci <- confint.default(final_model)
+print(wald_ci)
+
+likelihood_ci <- confint(final_model)  
+print(likelihood_ci)
+```
+For the effects plot:
+- Individuals in regions M, N, and S have higher probabilities of voting "yes" compared to the reference region C and SA. 
+- Lower levels of education (e.g., PS) are associated with a lower probability of voting "yes", while individuals with P and S levels show moderate probabilities.
+- As age increases, the probability of voting "yes" also increases. This effect is linear and significant.
+
+Comparing Wald and likelihood-ratio-based confidence intervals confirms the robustness of the estimated coefficients.
+The model fits the data well, as indicated by the substantial reduction in deviance and a reasonable AIC.
+:::
+
+(d) Fit a probit model to the data, comparing the results to those obtained with the logit model. Which do you think is better? Why?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+probit_model <- glm(
+  vote_binary ~ region + education + age,
+  data = cleaned_data,
+  family = binomial(link = "probit")
+)
+
+summary(probit_model)
+
+logit_aic <- AIC(final_model)
+probit_aic <- AIC(probit_model)
+cat("Logit AIC:", logit_aic, "\nProbit AIC:", probit_aic, "\n")
+
+logit_dev <- deviance(final_model)
+probit_dev <- deviance(probit_model)
+cat("Logit Residual Deviance:", logit_dev, "\nProbit Residual Deviance:", probit_dev, "\n")
+
+logit_coeff <- coef(final_model)
+probit_coeff <- coef(probit_model)
+comparison <- data.frame(
+  Predictor = names(logit_coeff),
+  Logit = logit_coeff,
+  Probit = probit_coeff
+)
+print(comparison)
+```
+Compared with the logit model and the probit model, the two models yield coefficients with the same sign and similar statistical significance.
+Two models also have similar AIC and deviance, which means that both models fit the data equally well.
+The logit model is preferred if interpretability is important because the coefficients can be directly interpreted as odds ratios after exponentiation.
+
+:::
+
+
+### Exercise D14.2 (Polytomous outcome)
+
+Proceed as in Exercise D14.1, but now include all of the data and the four possible outcome values.
+
+Use, as appropriate, one or more of the following: a multinomial logit model; a proportional odds logit model; logit models fit to a set of nested dichotomies; or similar probit models. If you fit the proportional-odds model, test the assumption of parallel regressions. If you fit more than one kind of model, which model do you prefer and why? If you only fit one model, why? Make sure to explain the results and interpretations of the preferred model.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r}
+library(nnet)        
+library(MASS)       
+```
+
+```{r}
+cleaned_data <- cleaned_data %>%
+  filter_all(all_vars(!is.na(.))) %>%  
+  filter_all(all_vars(!is.infinite(.))) %>% 
+  filter_all(all_vars(length(unique(.)) > 1))  
+
+multinom_model <- multinom(vote ~ region + education + sex + age, data = cleaned_data)
+summary(multinom_model)
+```
+
+```{r}
+logistic_model <- glm(factor(vote) ~ region + education + sex + age, family = binomial, data = cleaned_data)
+summary(logistic_model)
+```
+
+
+```{r}
+# Compare AIC and Residual Deviance
+multinom_aic <- AIC(multinom_model)
+logistic_aic <- AIC(logistic_model)
+cat("Multinomial Logit AIC:", multinom_aic, "\nLogistic Regression AIC:", logistic_aic, "\n")
+```
+
+The logistic regression model has a lower AIC, suggesting it provides a better fit than the Multinomial Logit model. 
+
+:::
+
+
+### Exercise D15.3 (GLM Diagnostics)
+
+Return to the logit (and probit) model that you fit in Exercise D14.1.
+
+(a) Use the diagnostic methods for generalized linear models described in this chapter to check the adequacy of the final model that you fit to the data.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+# Deviance Residuals:
+residuals_logit <- residuals(final_model, type = "deviance")
+plot(residuals_logit, main = "Deviance Residuals (Logit)", ylab = "Residuals")
+abline(h = 0, col = "red")
+```
+The deviance residuals plot shows points randomly distributed around 0, indicating no major systematic errors.
+
+```{r}
+# Standardized Residuals
+std_residuals_logit <- rstandard(final_model)
+hist(std_residuals_logit, main = "Standardized Residuals (Logit)", xlab = "Residuals")
+```
+The histogram of standardized residuals shows a symmetric distribution, mostly centered around -1 and 1. There are a few residuals near -2 and 2, but they are not problematic.
+
+```{r}
+# Cook's Distance
+cooks_dist_logit <- cooks.distance(final_model)
+plot(cooks_dist_logit, type = "h", main = "Cook's Distance (Logit)", ylab = "Cook's Distance")
+abline(h = 4/length(cooks_dist_logit), col = "red")
+```
+Most observations have low Cook's Distance values, indicating limited influence on the model. There are few obeservations that has high Cook's distance. 
+
+```{r}
+# Leverage values
+leverage_logit <- hatvalues(final_model)
+plot(leverage_logit, main = "Leverage (Logit)", ylab = "Hat Values")
+abline(h = 2 * mean(leverage_logit), col = "red")
+```
+Most points have low leverage, but some points near the right have higher leverage, suggesting they are outliers in the predictor space.
+
+```{r}
+# Variance Inflation Factor (VIF)
+library(car)
+vif_logit <- vif(final_model)
+print(vif_logit)
+```
+The GVIF values for all predictors (region, education, age) are low, indicating no serious multicollinearity issues.
+
+
+:::
+
+
+(b) If the model contains a discrete quantitative explanatory variable (such as a binned variable), test for nonlinearity by specifying a model that treats this variable as a factor (e.g., using dummy regressors), and comparing that model via a likelihood-ratio test to the model that specifies that the variable has a linear effect. (If there is more than one discrete quantitative explanatory variable, then begin with a model that treats all of them as factors, contrasting this with a sequence of models that specifies a linear effect for each such variable in turn.) Note that this is analogous to the approach for testing for nonlinearity in a linear model with discrete explanatory variables described in Section 12.4.1.
+
+::: {.callout-tip icon="false"}
+## Solution
+First, assume the binned variable is 'age'
+```{r}
+cleaned_data$age_factor <- cut(cleaned_data$age, 
+                                   breaks = c(20, 30, 40, 50, 60, 70), 
+                                   include.lowest = TRUE)
+
+common_data <- cleaned_data %>%
+  filter(complete.cases(region, education, age, income, age_factor))
+
+model_linear <- glm(factor(vote) ~ region + education + age + income, 
+                    data = common_data, family = binomial)
+
+model_factor <- glm(factor(vote) ~ region + education + age_factor + income, 
+                    data = common_data, family = binomial)
+
+# Likelihood-ratio test
+lr_test <- anova(model_linear, model_factor, test = "Chisq")
+print(lr_test)
+```
+Since deviances increases as we treated age as a factor, we should reject the null hypothesis that age can be treated as a categorical variable. Therefore, we should keep age as a continuous variable. 
+
+Second, I will examine the 'income' variable
+```{r}
+cleaned_data$income_factor <- cut(cleaned_data$income, 
+                                      breaks = c(0, 20000, 40000, 60000, 80000, 100000), 
+                                      include.lowest = TRUE)
+common_data_income <- cleaned_data %>%
+  filter(complete.cases(region, education, age, income, income_factor))
+
+model_linear_income <- glm(factor(vote) ~ region + education + age + income, 
+                           data = common_data_income, family = binomial)
+
+model_factor_income <- glm(factor(vote) ~ region + education + age + income_factor, 
+                           data = common_data_income, family = binomial)
+
+# Likelihood-ratio test
+lr_test_income <- anova(model_linear_income, model_factor_income, test = "Chisq")
+print(lr_test_income)
+
+```
+Since deviances increases as we treated income as a factor, we should reject the null hypothesis that income can be treated as a categorical variable. Therefore, we should keep income as a continuous variable. 
+
+:::
+
+
+(c) Explore the use of the Cauchy and complementary-log-log links as alternatives to the logit link for this regression. Comparing deviances under the different links, which link appears to best represent the data?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+# logit link
+model_logit <- glm(factor(vote) ~ region + education + age + income, 
+                   data = cleaned_data, family = binomial(link = "logit"))
+
+# cauchy link
+model_cauchy <- glm(factor(vote) ~ region + education + age + income, 
+                    data = cleaned_data, family = binomial(link = "cauchit"))
+
+# log-log link
+model_cloglog <- glm(factor(vote) ~ region + education + age + income, 
+                     data = cleaned_data, family = binomial(link = "cloglog"))
+
+deviances <- data.frame(
+  Link = c("Logit", "Cauchy", "Complementary Log-Log"),
+  Deviance = c(deviance(model_logit), deviance(model_cauchy), deviance(model_cloglog))
+)
+print(deviances)
+```
+The model with Logit has the lowest deviance, and this suggests that the logit link may slightly better represent the data compared to the Complementary Log-Log and Cauchy links.
+:::
+
+
+### Exercise D15.1 (Count data)
+
+Long (1990, 1997) investigates factors affecting the research productivity of doctoral students in biochemistry. Long's data (on 915 biochemists) are in the file `Long.txt`. The response variable in this investigation, `art`, is the number of articles published by the student during the last three years of his or her PhD programme. Overview of the explanatory variables are provided in @tbl-long-ex-vars below.
+
+| Variable name   | Definition                                                     |
+|:----------------|:---------------------------------------------------------------|
+| `fem`           | Gender: dummy variable - 1 if female, 0 if male                |
+| `mar`           | Maritial status: dummy variable - 1 if married, 0 if not       |
+| `kid5`          | Number of children five years old or younger                   |
+| `phd`           | Prestige rating of PhD department                              |
+| `ment`          | Number of articles published by mentor during last three years |
+
+: Explanatory variables in `long.txt` data {#tbl-long-ex-vars}
+
+(a) Examine the distribution of the response variable. Based on this distribution, does it appear promising to model these data by linear least-squares regression, perhaps after transforming the response? Explain your answer.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(ggplot2)
+library(MASS) 
+
+long_data <- read.table("https://www.john-fox.ca/AppliedRegression/datasets/Long.txt", 
+                        header = TRUE, sep = "", stringsAsFactors = FALSE)
+
+long_data$fem <- as.numeric(as.character(long_data$fem))
+long_data$mar <- as.numeric(as.factor(long_data$mar))
+long_data$kid5 <- as.numeric(as.character(long_data$kid5))
+long_data$phd <- as.numeric(as.character(long_data$phd))
+long_data$ment <- as.numeric(as.character(long_data$ment))
+
+head(long_data)
+```
+
+```{r}
+ggplot(long_data, aes(x = art)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1, fill = "lightblue", color = "black") +
+  geom_density(color = "red") +
+  labs(title = "Distribution of Articles Published",
+       x = "Number of Articles",
+       y = "Density") +
+  theme_minimal()
+
+print(paste("Skewness:", e1071::skewness(long_data$art)))
+```
+The data is highly right-skewed, with most values concentrated near 0 to 5 and a long tail stretching beyond 10+. The skewness is 2.51, which is a significant number.
+
+```{r}
+# possible transformations
+long_data$log_art <- log1p(long_data$art)  # Log transformation
+long_data$sqrt_art <- sqrt(long_data$art)  # Square root transformation
+
+ggplot(long_data, aes(x = log_art)) +
+  geom_histogram(binwidth = 0.2, color = "black", fill = "red", alpha = 0.7) +
+  labs(title = "Log-transformed Distribution of Articles Published",
+       x = "Log(1+art)",
+       y = "Frequency") +
+  theme_minimal()
+
+ggplot(long_data, aes(x = sqrt_art)) +
+  geom_histogram(binwidth = 0.5, color = "black", fill = "green", alpha = 0.7) +
+  labs(title = "Square Root Transformed Distribution of Articles Published",
+       x = "sqrt(art)",
+       y = "Frequency") +
+  theme_minimal()
+```
+The log transformation distribution is much closer to normal, though there is still a heavy left-side concentration
+
+The square root transformation reduces skewness, making the distribution more symmetric. However, there are large gaps remain between the bars, indicating the transformation is not entirely effective.
+
+
+
+```{r}
+# Use long transformation to fit a linear model
+long_data$log_art <- log1p(long_data$art)  # log(1+art) transformation
+lm_model <- lm(log_art ~ fem + mar + kid5 + phd + ment, data = long_data)
+summary(lm_model)
+
+
+# Check residuals for normality
+ggplot(data.frame(residuals = lm_model$residuals), aes(x = residuals)) +
+  geom_histogram(binwidth = 1, color = "black", fill = "purple", alpha = 0.7) +
+  labs(title = "Residuals of Linear Model",
+       x = "Residuals",
+       y = "Frequency") +
+  theme_minimal()
+
+```
+The R-squared value is 0.09997, which means that the model explains only ~10% of the variance in the number of articles published. 
+F-statistics is 21.31 and p-value < 2.2e-16, which means the model is statistically significant.
+The residual histogram shows that the residuals are not perfectly normal, suggesting some heteroscedasticity or missing nonlinear effects.
+The distribution is slightly skewed, indicating log transformation helped but may not be enough. Therefore, the linear regression model is not enough.
+
+:::
+
+
+(b) Following Long, perform a Poisson regression of art on the explanatory variables. What do you conclude from the results of this regression? Be sure to interpret the results.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+poisson_model <- glm(art ~ fem + mar + kid5 + phd + ment, 
+                     data = long_data, family = poisson)
+
+summary(poisson_model)
+```
+Null deviance = 1817.4, Residual deviance = 1634.4, suggesting some improvement from the model.
+For each variables, mentor publications have the strongest positive impact on student productivity.
+Being female or having young children negatively affects research output; marriage has a small positive effect; PhD prestige does not significantly impact productivity.
+
+:::
+
+
+(c) Perform regression diagnostics on the model fit in the previous question. If you identify any problems, try to deal with them. Are the conclusions of the research altered?
+
+::: {.callout-tip icon="false"}
+## Solution
+```{r}
+# check for overdispersion
+dispersion_ratio <- sum(residuals(poisson_model, type = "pearson")^2) / poisson_model$df.residual
+print(paste("Dispersion Ratio:", dispersion_ratio))
+```
+Since the dispersion ratio is 1.829, which is bigger than > 1.5, Poisson may not be appropriate.
+
+```{r}
+# check influential obeservations
+library(ggplot2)
+cooks_dist <- cooks.distance(poisson_model)
+
+ggplot(data.frame(Index = 1:length(cooks_dist), CooksD = cooks_dist), aes(x = Index, y = CooksD)) +
+  geom_bar(stat = "identity", fill = "blue", alpha = 0.5) +
+  labs(title = "Cook's Distance for Poisson Model", x = "Observation", y = "Cook's Distance") +
+  theme_minimal()
+```
+The Cook’s Distance plot shows that most observations have very small Cook’s distances, suggesting that no single observation has a major influence on the model. However, a few points have slightly higher Cook’s distances, indicating they might be mildly influential.
+
+```{r}
+# Check Goodness-of-Fit
+library(pscl)
+pR2(poisson_model)
+```
+McFadden R^2 is very low (0.0525), indicating the model explains only ~5.3% of the variance. The model does not fit well, suggesting missing variables or incorrect model assumptions.
+:::
+
+
+(d) Refit Long's model allowing for overdispersion (using a quasi-Poisson or negative-binomial model). Does this make a difference to the results?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+nb_model <- glm.nb(art ~ fem + mar + kid5 + phd + ment, data = long_data)
+summary(nb_model)
+AIC(poisson_model, nb_model)
+```
+The AIC for negative binomial model is smaller than that for the possion model, indicating a better fit for the data. Besides, switching to Negative Binomial regression improves model fit, but it does not drastically alter the research findings: mentor productivity has the strongest positive effect; 
+females publish significantly fewer articles; more young children negatively impact research output; marriage may slightly increase productivity; PhD prestige does not significantly impact publication count.
+
+
+```{r}
+# check for overdispersion
+dispersion_ratio2 <- sum(residuals(nb_model, type = "pearson")^2) / nb_model$df.residual
+print(paste("Dispersion Ratio:", dispersion_ratio2))
+```
+Since the dispersion ratio is 1.039, which is smaller than > 1.5 and smaller than the ratio for the Poisson model, which indicates that negative binomial model is better than Poisson model and overdispersion was handled.
+
+:::
+

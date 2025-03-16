@@ -1,0 +1,272 @@
+---
+title: "HW 1: OLS Review"
+subtitle: "Advanced Regression (STAT 353-0)"
+author: "Zihan Chu"
+pagetitle: "HW 1 Zihan Chu"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+
+execute:
+  warning: false
+
+from: markdown+emoji
+reference-location: margin
+citation-location: margin  
+---
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+To link to your github **repo**sitory, appropriately edit the example link below. Meaning replace `https://your-github-repo-url` with your github repo url. Suggest verifying the link works before submitting.
+
+[https://github.com/karliechu1023/myrepo](https://your-github-repo-url)
+
+:::
+
+## Overview
+
+In this homework, you will review OLS regression. The concepts focused on here are obviously not all of what you know (from STAT 350), but they are concepts that are particularly important for this course. Pay particular attention to interpretation.
+
+## Data
+
+For this assignment, we are using the `Duncan` dataset. This dataset provides data on the prestige and other characteristics of 45 U. S. occupations in 1950. The data was collected by the sociologist [Otis Dudley Duncan](https://en.wikipedia.org/wiki/Otis_Dudley_Duncan).
+
+## Preliminaries
+
+As a first step, we load the `{car}` package. This is the package developed by the author of our textbook and contains several useful functions and datasets, so we will be using it throughout this quarter.
+
+Begin by examining the first few rows of the `Duncan` data:
+
+```{r}
+library("car") # load car and carData packages
+
+head(Duncan, n=10)
+dim(Duncan)
+```
+
+Obtain summary statistics for the variables in `Duncan`:
+
+```{r}
+summary(Duncan)
+```
+
+As a first graph, we view a histogram of the variable `prestige`:
+
+```{r}
+with(Duncan, hist(prestige))
+```
+
+## Exercises
+
+### 1. Examining the Data
+
+A first step for any analysis should include Exploratory Data Analysis (EDA). This allows you to check to see that you understand the variables - how they are coded, if they are factors or continuous, and if there are mistakes.
+
+The `scatterplotMatrix()` function in the **car** package produces scatterplots for all pairs of variables. A few relatively remote points are marked by case names, in this instance by occupation.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r fig.height=8, fig.width=8}
+scatterplotMatrix(
+  ~ income + education + prestige, 
+  data = Duncan,
+  id = list(n=3),              # label 'n' most extreme points by Mahalanobis distance
+  diagonal = "histogram",    
+  main = "Scatterplot Matrix of Duncan Data"
+)
+```
+
+:::
+
+
+Via the scatterplots above - and any other EDA you'd like to do - describe the data. What seems to be going on here?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+We can see from the plot that income, education, and prestige are all positively correlated with each other. In other words, as one of these variables increases, the others also tend to increase. Occupations that are higher in education also tend to have higher income and higher prestige.
+
+Income has a slightly skewed (right‐leaning) distribution, with most values below 60 and a bit of a tail toward higher incomes. Education looks a bit bimodal, suggesting two different clusters of educational levels among these occupations. Prestige shows a concentration of occupations in the 30–60 range, with another smaller bump approaching 100.
+
+Certain occupations (e.g., “minister,” “RR.engineer,” “conductor,” “reporter”) stand out to be the outliers from the general trend in one or more comparisons.
+
+:::
+
+### 2. Regression Analysis
+
+#### A. Model 1
+
+Use the`lm()` function to fit a linear regression model to the data, in which `education` and `income` are regressed on `prestige`.
+
+Interpret the findings from this model. Are education and income good explanations for an occupation's prestige? Interpret the coefficient for income - what does it mean? Does education or income have a larger effect on prestige? Justify your conclusion.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+
+```{r}
+model1 <- lm(prestige ~ education + income, data = Duncan)
+
+summary(model1)
+```
+
+R squared value is about 82% of the variability in occupational prestige is explained by education and income. This is quite high, suggesting these two predictors capture most of the variation in prestige. An increase of 1 in the (raw) income score is associated with, on average, a 0.59873 point increase in prestige, assuming education stays the same. Looking at the unstandardized estimates, income (0.59873) is slightly higher than education (0.54583), so incone has a larger effect on prestige.
+
+:::
+
+#### B. Model 2
+
+Now, add in the `type` of occupation to the model. Is the model with `type` a better model? Explain what statistics you would use to make this decision, conduct the analysis, and interpret the results.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+
+```{r}
+model2 <- lm(prestige ~ education + income + type, data = Duncan)
+summary(model2)
+```
+
+p-value = 1.208e-06 < 0.001 indicates a highly significant improvement by including type. RSS drops from 7506.7 to 3798.0, showing that Model 2 explains far more variance in prestige. R squared improves from about 0.82 in Model 1 to 0.91 in Model 2.
+
+The model2 now explains 91% of the variation in prestige adjusted R squared is 91%, compared to 82% before. Adding “type” helps to improve the model, since the F-test comparing the two models gives a very low p-value (< 0.000001). We also see the adjusted R squared jump from ~0.82 to ~0.90+, which is a substantial improvement
+
+:::
+
+
+### 3. Regression Diagnostics
+
+#### A. Non-normality
+
+The `rstudent()` function returns studentized residuals, and the `densityPlot()` function fits an adaptive kernel density estimator to the distribution of the studentized residuals. A `qqPlot()` can be used as a check for nonnormal errors, comparing the studentized residuals to a t-distribution.
+
+Use these to examine the results of your best model from Question 2. What do you conclude?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r fig.height=5, fig.width=5}
+library(car)
+res_stud <- rstudent(model2)     
+
+densityPlot(res_stud, 
+            main = "Density Plot of Studentized Residuals", 
+            xlab = "Studentized Residuals")
+
+qqPlot(model2, 
+       id = FALSE,                # set to TRUE if you want to label outliers
+       main = "QQ Plot of Studentized Residuals")
+```
+
+For density plot, the distribution is unimodal, centered slightly to the right of zero (though fairly close to zero). There is a fairly steep peak around −0.5 to 0, then a right tail that descends out past 4. Overall, it does not appear dramatically skewed or multimodal—most of the residuals are near zero.
+
+For QQ Plot of studentized residuals, most points line up reasonably well with the diagonal reference line, suggesting the errors are not too far from normal.The main departure is in the upper tail, where we see a few points rising clearly above the confidence band.
+
+Taken together, these plots suggest the normality assumption is largely met, with a slight concern about heavier upper‐tail residuals.
+
+:::
+
+#### B. Influence = outliers \* leverage
+
+The `outlierTest()` function tests for outliers in the regression. The `influenceIndexPlot()` function creates a graph that displays influence measures in index plots. The `avPlots()` function creates added variable plots, which allow you to visualize how influential data points might be affecting (or not) the estimated coefficients.
+
+Using these (and/or other tools), using your preferred model from Question 2, are there any influential data points?
+
+If the diagnostics suggest that there are influential points, does removing these influential points change the results of the analysis? Compare models using the `compareCoefs()` function. What do you conclude?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+model2 <- lm(prestige ~ education + income + type, data = Duncan)
+outlierTest(model2)
+```
+
+“Minister” has a high standard residual value, which implies that it doesn’t fit well on the predicted line. Removing “minister” does shift the coefficients (especially for income, which grows from 0.60 to 0.72). It has a higher prestige based on its income and education, even after controlling for type = “prof,” “wc,” or “bc.” Because the p‐value is small and below the threshold, “minister” qualifies as a statistically significant outlier in the regression sense.
+
+```{r}
+influenceIndexPlot(model2, id=list(method="identify"), main="Influence Index Plot")
+
+avPlots(model2, id=list(method="identify"), main="Added-Variable Plots")
+
+# Suppose the outlierTest() or influence plots flagged row 10
+model2_noOut <- update(model2, subset = -10)
+
+# Compare coefficients of original vs. outlier-omitted model
+compareCoefs(model2, model2_noOut)
+```
+
+“Minister” appears as a high studentized residual, but does not necessarily have extreme leverage (hat values). In added-value variable plots, “minister” stands out somewhat in the partial relationship for income/education/type, consistent with it being an outlier.
+
+```{r}
+model2_noMinister <- update(model2, subset = rownames(Duncan) != "minister")
+library(car)
+compareCoefs(model2, model2_noMinister)
+```
+
+Since none of these shifts reverse signs or become insignificant, so the overall story stays the same.We can conclude that “minister” is outlier.
+
+:::
+
+#### C. Non-linearity 
+
+Component-plus-residual plots allow for the detection of non-linearity in the partial relationship between each covariate and the outcome. These can be created using the `crPlots()` function.
+
+For your preferred model, does it appear there is any nonlinearity? Explain.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+
+```{r fig.height=4, fig.width=8}
+crPlots(model2)
+```
+
+From the component-plus-residual plots, it looks like both education and income show roughly linear partial relationships with prestige. Overall, these plots suggest no major evidence of nonlinearity for either education or income, and the factor variable’s boxplots look reasonable.
+
+:::
+
+#### D. Heteroscedasticity
+
+Non-constant error variance can be tested using the `ncvTest()` function.
+
+Does it appear that this is a concern with this data? Explain
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r}
+ncvTest(model2)
+```
+
+the p‐value is well above 0.05. This means we fail to reject the null hypothesis that the error variance is constant. Therefore, there is no statistically significant evidence of heteroscedasticity in this model.
+
+:::
+
+### 4. Interpretation
+
+Should the model above be used to answer a descriptive, explanatory, or predictive question? Explain your answer.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+This particular regression model is best suited to descriptive and explanatory purposes rather than strict prediction. It is not optimized for forecasting new or future observations—especially given that the data come from a specific time and sample. Also, predictive models typically require additional steps such as splitting data into training/testing sets, cross-validation, or external validation, but we don’t have such additional steps here.
+
+:::
+
