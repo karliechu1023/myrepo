@@ -1,0 +1,214 @@
+---
+title: "HW 1: OLS Review"
+subtitle: "Advanced Regression (STAT 353-0)"
+author: "Zihan Chu"
+pagetitle: "HW 1 Zihan Chu"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+
+execute:
+  warning: false
+
+from: markdown+emoji
+reference-location: margin
+citation-location: margin  
+---
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+To link to your github **repo**sitory, appropriately edit the example link below. Meaning replace `https://your-github-repo-url` with your github repo url. Suggest verifying the link works before submitting.
+
+[https://your-github-repo-url](https://your-github-repo-url)
+
+:::
+
+## Overview
+
+In this homework, you will review OLS regression. The concepts focused on here are obviously not all of what you know (from STAT 350), but they are concepts that are particularly important for this course. Pay particular attention to interpretation.
+
+## Data
+
+For this assignment, we are using the `Duncan` dataset. This dataset provides data on the prestige and other characteristics of 45 U. S. occupations in 1950. The data was collected by the sociologist [Otis Dudley Duncan](https://en.wikipedia.org/wiki/Otis_Dudley_Duncan).
+
+## Preliminaries
+
+As a first step, we load the `{car}` package. This is the package developed by the author of our textbook and contains several useful functions and datasets, so we will be using it throughout this quarter.
+
+Begin by examining the first few rows of the `Duncan` data:
+
+```{r}
+library("car") # load car and carData packages
+
+head(Duncan, n=10)
+dim(Duncan)
+```
+
+Obtain summary statistics for the variables in `Duncan`:
+
+```{r}
+summary(Duncan)
+```
+
+As a first graph, we view a histogram of the variable `prestige`:
+
+```{r}
+with(Duncan, hist(prestige))
+```
+
+## Exercises
+
+### 1. Examining the Data
+
+A first step for any analysis should include Exploratory Data Analysis (EDA). This allows you to check to see that you understand the variables - how they are coded, if they are factors or continuous, and if there are mistakes.
+
+The `scatterplotMatrix()` function in the **car** package produces scatterplots for all pairs of variables. A few relatively remote points are marked by case names, in this instance by occupation.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+```{r fig.height=8, fig.width=8}
+
+```
+
+:::
+
+
+Via the scatterplots above - and any other EDA you'd like to do - describe the data. What seems to be going on here?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+:::
+
+### 2. Regression Analysis
+
+#### A. Model 1
+
+Use the`lm()` function to fit a linear regression model to the data, in which `education` and `income` are regressed on `prestige`.
+
+Interpret the findings from this model. Are education and income good explanations for an occupation's prestige? Interpret the coefficient for income - what does it mean? Does education or income have a larger effect on prestige? Justify your conclusion.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+```{r}
+
+```
+
+:::
+
+#### B. Model 2
+
+Now, add in the `type` of occupation to the model. Is the model with `type` a better model? Explain what statistics you would use to make this decision, conduct the analysis, and interpret the results.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+```{r}
+
+```
+
+:::
+
+
+### 3. Regression Diagnostics
+
+#### A. Non-normality
+
+The `rstudent()` function returns studentized residuals, and the `densityPlot()` function fits an adaptive kernel density estimator to the distribution of the studentized residuals. A `qqPlot()` can be used as a check for nonnormal errors, comparing the studentized residuals to a t-distribution.
+
+Use these to examine the results of your best model from Question 2. What do you conclude?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+```{r fig.height=5, fig.width=5}
+
+```
+
+:::
+
+#### B. Influence = outliers \* leverage
+
+The `outlierTest()` function tests for outliers in the regression. The `influenceIndexPlot()` function creates a graph that displays influence measures in index plots. The `avPlots()` function creates added variable plots, which allow you to visualize how influential data points might be affecting (or not) the estimated coefficients.
+
+Using these (and/or other tools), using your preferred model from Question 2, are there any influential data points?
+
+If the diagnostics suggest that there are influential points, does removing these influential points change the results of the analysis? Compare models using the `compareCoefs()` function. What do you conclude?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+```{r}
+
+```
+
+:::
+
+#### C. Non-linearity 
+
+Component-plus-residual plots allow for the detection of non-linearity in the partial relationship between each covariate and the outcome. These can be created using the `crPlots()` function.
+
+For your preferred model, does it appear there is any nonlinearity? Explain.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+```{r fig.height=4, fig.width=8}
+
+```
+
+:::
+
+#### D. Heteroscedasticity
+
+Non-constant error variance can be tested using the `ncvTest()` function.
+
+Does it appear that this is a concern with this data? Explain
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+```{r}
+
+```
+
+:::
+
+### 4. Interpretation
+
+Should the model above be used to answer a descriptive, explanatory, or predictive question? Explain your answer.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+YOUR SOLUTION HERE
+
+:::
+
