@@ -1,0 +1,519 @@
+---
+title: "Final Exam Instructions"
+subtitle: |
+  | Advanced Regression (STAT 355-0)
+  | Winter 2025
+author: "Zihan Chu"
+pagetitle: "Final Exam:Zihan Chu"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+    theme: cosmo
+
+execute:
+  warning: false
+
+from: markdown+emoji
+reference-location: margin
+citation-location: margin
+---
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+To link to your github **repo**sitory, appropriately edit the example link below. Meaning replace `https://your-github-repo-url` with your github repo url. Suggest verifying the link works before submitting.
+
+[https://github.com/karliechu1023/myrepo.git](https://github.com/karliechu1023/myrepo.git)
+
+```{r}
+library(readr)
+library(readxl)
+library(dplyr)
+```
+
+:::
+
+## An Overview of the Problem
+
+Homelessness remains a critical issue across the United States, affecting hundreds of thousands of individuals each year. Despite numerous efforts to address the problem, recent data indicates that the number of homeless individuals has been increasing in several major metropolitan areas. Understanding the factors that contribute to homelessness is crucial for developing effective policies to mitigate this growing crisis.
+
+## The Data
+
+The data for this exam is sourced from the U.S. Department of Housing and Urban Development (HUD) and the U.S. Census Bureau, encompassing variables related to housing market conditions, economic factors, social safety nets, demographic characteristics, and climate data, all of which are critical in analyzing homelessness across various communities.
+
+All of the information that you need to understand this data is provided in the `data/` sub-directory. This includes:
+
+- `05b_analysis_file_update.csv` : The data
+- `HUD TO3 - 05b Analysis File - Data Dictionary.xlsx` : The data dictionary
+
+## This Exam 
+ 
+For this exam, we will focus in particular on one outcome:
+
+  - `homelessness_rate`^[Not included in the data and must be calculated]: This represents the rate of homeless individuals as counted during the annual PIT survey. It is calculated by dividing the variable `pit_tot_hless_pit_hud` by `dem_pop_pop_census`, focusing exclusively on the **year 2017**.
+  
+::: {.callout-note}
+
+**A strong exam is one that is judicious in what is presented (you can put materials in an Appendix), that explains the decisions and assumptions that were made and why, that explains how the results should be interpreted, and that is clear in any limitations.**
+
+Put another way, there is no single right answer to this analysis problem. There are many suitable approaches. Of course, there are approaches that are clearly not suitable too. The key is to concisely explain your work and provide evidence and/or sound reasoning for why your approach is appropriate. This includes identifying issues or limitations with your approach. 
+
+As George Box said, "All models are wrong, but some are useful."
+
+```{r}
+homelessness_data <- read_csv("/Users/karlies/Desktop/05b_analysis_file_update.csv")
+data_dictionary <- data_dictionary <- read_excel(file.choose("HUD T03 - 05b Analysis File - Data Dictionary.xlsx"))
+```
+
+
+:::  
+
+## Questions
+
+### Question 1
+
+After exploring the outcome, what type of regression model might you use to for `homelessness_rate`? Explain your choice. If you considered more than one type, explain how you arrived at each and how you made your final decision. 
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+# create variable homelessness_rate
+homelessness_data_2017 <- homelessness_data %>%
+  filter(year == 2017) %>%
+  mutate(homelessness_rate = pit_tot_hless_pit_hud / dem_pop_pop_census)
+```
+
+
+```{r}
+# check the distribution of the variable
+library(ggplot2)
+
+ggplot(homelessness_data_2017, aes(x = homelessness_rate)) +
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.7) +
+  labs(title = "Distribution of Homelessness Rate",
+       x = "Homelessness Rate",
+       y = "Count")
+
+summary(homelessness_data_2017$homelessness_rate)
+```
+The histogram is highly right-skewed (positively skewed), bounded at zero (rates can't be negative), Contains many observations near zero and has a few outliers at higher values. Given these characteristics, I recommend a gam model with log transformation model. The log transformation will help address the skewness in the data. The GAM approach would more accurately capture the complex relationships evident in your data, leading to better insights and predictive performance. This is particularly important when modeling social phenomena like homelessness that often have complex, non-linear relationships with their determinants.
+
+:::
+
+### Question 2
+
+The variable `homelessness_rate` represents the rate of homeless individuals per population unit. You hypothesize that the following variables may be associated with this outcome:
+
+- `econ_labor_unemp_rate_BLS`: Unemployment rate
+- `dem_soc_ed_hsgrad_acs5yr_2017`: Percentage of the population that are high school graduates in the
+population unit
+- `econ_labor_medinc_acs5yr_2017`: Median income in the population unit
+- `hou_mkt_medrent_acs5yr_2017`: Median rent in the population unit
+- `env_wea_avgtemp_summer_noaa`: Average summer temperature (June, July, August)
+
+Please perform an analysis to evaluate the relationship between these variables and the `homelessness_rate`. Be sure to interpret your findings and draw clear conclusions based on your analysis.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r}
+library(dplyr)
+homelessness_data_analysis <- homelessness_data_2017 %>%
+  dplyr::select(homelessness_rate, 
+         econ_labor_unemp_rate_BLS,
+         dem_soc_ed_hsgrad_acs5yr_2017,
+         econ_labor_medinc_acs5yr_2017,
+         hou_mkt_medrent_acs5yr_2017,
+         env_wea_avgtemp_summer_noaa) %>%
+  na.omit()
+
+# Log-transform the homelessness rate
+homelessness_data_analysis <- homelessness_data_analysis %>%
+  mutate(log_homelessness_rate = log(homelessness_rate + ifelse(zero_count > 0, 0.0001, 0)))
+
+# Examine correlations between variables
+correlation_matrix <- cor(homelessness_data_analysis, use = "complete.obs")
+print(correlation_matrix)
+
+# Fit the gam model
+gam_model <- gam(log_homelessness_rate ~ 
+                s(econ_labor_unemp_rate_BLS) +
+                s(dem_soc_ed_hsgrad_acs5yr_2017) +
+                s(econ_labor_medinc_acs5yr_2017) +
+                s(hou_mkt_medrent_acs5yr_2017) +
+                s(env_wea_avgtemp_summer_noaa),
+              data = homelessness_data_analysis,
+              family = gaussian())
+
+# Summarize the model
+summary_result <- summary(gam_model)
+print(summary_result)
+
+par(mfrow = c(2, 2))
+plot(gam_model)
+```
+The Generalized Additive Model explains approximately 47.1% of the variance in log-transformed homelessness rates, with 49% of deviance explained.  The overall model is highly significant (p-value: < 2.2e-16), indicating that this set of predictors collectively has a meaningful relationship with homelessness rates.
+
+1. For education (dem_soc_ed_hsgrad_acs5yr_2017), education levels have a significant but relatively modest relationship with homelessness rates (p = 0.00210) with slight non-linearity (edf = 2.456). The smooth plot shows a generally negative association between graduation rates and homelessness, though the effect appears weaker than income or housing cost factors.
+2. For median income (econ_labor_medinc_acs5yr_2017), it shows a strong inverse relationship with homelessness rates (p < 2e-16) that is effectively linear (edf = 1.000). The smooth plot demonstrates a clear pattern: as median income increases from $40,000 to $120,000, homelessness rates consistently decrease. This makes median income one of the strongest protective factors against homelessness identified in the model.
+3. For median rent (hou_mkt_medrent_acs5yr_2017), it shows a significant positive linear relationship with homelessness rates (p < 2e-16, edf = 1.000). The smooth plot indicates that as median rent increases from $4 to $18 (likely measured in hundreds), homelessness rates increase proportionally. This finding supports the theory that housing affordability is a critical factor in homelessness prevalence.
+4. For Average Summer Temperature(env_wea_avgtemp_summer_noaa), it shows a significant negative linear relationship with homelessness (p < 2e-16, edf = 1.000). As temperatures increase from 60°F to 90°F, homelessness rates tend to decrease. This could reflect migration patterns of homeless populations toward warmer climates or the increased difficulty of surviving homelessness in colder environments.
+5. The unemployment rate demonstrates a significant non-linear relationship with homelessness rates (p = 0.00149). The smooth plot reveals a complex U-shaped pattern where moderate unemployment (around 5-10%) shows minimal association with homelessness, but rates increase more substantially when unemployment exceeds 15%. The high effective degrees of freedom (edf = 7.593) confirms this non-linear pattern is statistically meaningful.
+
+Conclusions
+The analysis confirms that all five hypothesized variables are significantly associated with homelessness rates, but with varying patterns and strengths.
+Housing market conditions (rent) and economic factors (income) demonstrate the strongest associations with homelessness, with F-values of 184.456 and 207.296 respectively. The relationship between unemployment and homelessness is more complex than simple linear correlation, suggesting targeted interventions may need to focus particularly on communities with very high unemployment. Education and climate factors, while significant, appear to have more modest effects on homelessness rates than economic and housing variables. The multivariate approach confirms that homelessness is influenced by multiple intersecting factors rather than any single cause.
+
+
+
+:::
+
+
+### Question 3
+
+Are there any non-linearities in these relationships explored in Question 2? Investigate and explain.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+
+```{r}
+plot_relationship <- function(data, x_var, y_var = "log_homelessness_rate") {
+  ggplot(data, aes_string(x = x_var, y = y_var)) +
+    geom_point(alpha = 0.5) +
+    geom_smooth(method = "loess", color = "blue") +  # Non-linear smoothed line
+    geom_smooth(method = "lm", color = "red", linetype = "dashed") +  # Linear reference
+    theme_minimal() +
+    labs(title = paste("Relationship between", x_var, "and", y_var),
+         x = x_var, y = y_var)
+}
+
+# Generate plots for each predictor
+predictors <- c("econ_labor_unemp_rate_BLS", 
+                "dem_soc_ed_hsgrad_acs5yr_2017",
+                "econ_labor_medinc_acs5yr_2017", 
+                "hou_mkt_medrent_acs5yr_2017",
+                "env_wea_avgtemp_summer_noaa")
+
+for(predictor in predictors) {
+  print(plot_relationship(homelessness_data_analysis, predictor))
+}
+
+```
+
+
+```{r}
+# Test for non-linearity using polynomial terms
+poly_model <- lm(log_homelessness_rate ~ 
+                  econ_labor_unemp_rate_BLS + I(econ_labor_unemp_rate_BLS^2) +
+                  dem_soc_ed_hsgrad_acs5yr_2017 + I(dem_soc_ed_hsgrad_acs5yr_2017^2) +
+                  econ_labor_medinc_acs5yr_2017 + I(econ_labor_medinc_acs5yr_2017^2) +
+                  hou_mkt_medrent_acs5yr_2017 + I(hou_mkt_medrent_acs5yr_2017^2) +
+                  env_wea_avgtemp_summer_noaa + I(env_wea_avgtemp_summer_noaa^2),
+                data = homelessness_data_analysis)
+
+summary(poly_model)
+
+# Compare linear and polynomial models
+anova(gam_model, poly_model)
+```
+There are clear non-linear relationships between several predictor variables and the homelessness rate. 
+
+1. For Unemployment Rate (econ_labor_unemp_rate_BLS), The blue LOESS line shows a distinct U-shaped pattern with a minimum around 5-6% unemployment. The quadratic term is highly significant with a positive coefficient, confirming the U-shaped relationship. Areas with both very low and very high unemployment have higher homelessness rates, while moderate unemployment areas have the lowest homelessness rates. This non-linear relationship wasn't captured in the original linear model, which found unemployment non-significant.
+
+The quadratic term for unemployment is statistically significant (p = 0.000312) with a positive coefficient (0.008713), confirming a U-shaped relationship. The linear term shows a negative coefficient (-0.1537), indicating that at lower unemployment levels, increases in unemployment actually correspond with slight decreases in homelessness rates. Also, beyond a certain threshold, increases in unemployment correspond with accelerating increases in homelessness rates
+
+2.For High School Graduation Rate, the LOESS curve shows a slightly inverted U-shape with a peak around 20-25%. The high school graduation rate shows a marginally significant quadratic term (p = 0.05818) with a negative coefficient (-0.00121). This suggests an inverted U-shape where at very low education levels, improvements in graduation rates may not substantially reduce homelessness; at higher education levels, further improvements have increasingly protective effects against homelessness. This non-linearity is less pronounced than for unemployment but still merits consideration in policy development.
+
+3.For Median Income, the LOESS curve shows relatively linear behavior until about $80,000, then curves more steeply downward. The p-value for the quadratic term is 0.23122. The quadratic term is not significant, suggesting the non-linearity isn't strong enough to be conclusive statistically. There's visual evidence that the protective effect of income becomes stronger at higher income levels, but this effect isn't statistically significant in the polynomial model.
+
+4.For Median Rent, the LOESS curve shows a clear non-linear relationship with a steep increase in homelessness at lower rent levels that levels off at higher rents. The quadratic term is not statistically significant (with p=0.19937) though the negative coefficient suggests a concave relationship. Areas with very low median rent show dramatically lower homelessness rates, with the effect diminishing at higher rent levels.
+
+5.For Average Summer Temperature, the LOESS curve shows a huge U-shape. The quadratic term isn't statistically significant (with quadratic p value=0.55045), despite the visual evidence.Both very cold and very hot areas appear to have higher homelessness rates. However, this pattern isn't strong enough to reach statistical significance.
+
+These polynomial regression findings align with the GAM results, which also identified strong non-linearity in the unemployment relationship and more modest non-linearity in education. The polynomial approach offers the additional benefit of quantifying these relationships in ways that can be directly incorporated into predictive models.
+
+:::
+
+
+### Question 4
+
+How do these effects vary between rural and non-rural areas (suburban and major cities)? Use the variable `rural` (an indicator of rural areas) to explore these differences. Interpret your findings and discuss any significant variations you observe.
+
+::: {.callout-tip icon="false"}
+## Solution
+```{r}
+homelessness_data_analysis2 <- homelessness_data_2017 %>%
+  mutate(homelessness_rate = pit_tot_hless_pit_hud / dem_pop_pop_census,
+         log_homelessness_rate = log(homelessness_rate + 0.0001),
+         rural = as.factor(rural)
+  )%>%
+  dplyr::select(homelessness_rate, log_homelessness_rate, rural,
+         econ_labor_unemp_rate_BLS,
+         dem_soc_ed_hsgrad_acs5yr_2017,
+         econ_labor_medinc_acs5yr_2017,
+         hou_mkt_medrent_acs5yr_2017,
+         env_wea_avgtemp_summer_noaa) %>%
+  na.omit()
+str(homelessness_data_analysis2)
+```
+
+
+```{r}
+homelessness_data_2017 %>%
+  group_by(rural) %>%
+  summarize(
+    mean_homelessness_rate = mean(homelessness_rate, na.rm = TRUE),
+    median_homelessness_rate = median(homelessness_rate, na.rm = TRUE),
+    count = n()
+  )
+```
+
+```{r}
+rural_model <- gam(log_homelessness_rate ~ 
+                s(econ_labor_unemp_rate_BLS) +
+                s(dem_soc_ed_hsgrad_acs5yr_2017) +
+                s(econ_labor_medinc_acs5yr_2017) +
+                s(hou_mkt_medrent_acs5yr_2017) +
+                s(env_wea_avgtemp_summer_noaa),
+              data = subset(homelessness_data_analysis2, rural == 1),
+              method = "REML")
+
+
+nonrural_model <- gam(log_homelessness_rate ~ 
+                   s(econ_labor_unemp_rate_BLS) +
+                   s(dem_soc_ed_hsgrad_acs5yr_2017) +
+                   s(econ_labor_medinc_acs5yr_2017) +
+                   s(hou_mkt_medrent_acs5yr_2017) +
+                   s(env_wea_avgtemp_summer_noaa),
+                 data = subset(homelessness_data_analysis2, rural == 0),
+                 method = "REML")
+
+# Compare model results
+summary(rural_model)
+summary(nonrural_model)
+```
+```{r}
+par(mfrow=c(2,3)) 
+plot(rural_model, pages=1, main="Rural Areas")
+par(mfrow=c(2,3))
+plot(nonrural_model, pages=1, main="Non-rural Areas")
+
+rural_performance <- summary(rural_model)
+nonrural_performance <- summary(nonrural_model)
+
+model_comparison <- data.frame(
+  Model = c("Rural GAM", "Non-rural GAM"),
+  Deviance_Explained = c(rural_performance$dev.expl, nonrural_performance$dev.expl),
+  R_Squared = c(rural_performance$r.sq, nonrural_performance$r.sq),
+  AIC = c(AIC(rural_model), AIC(nonrural_model))
+)
+
+print(model_comparison)
+```
+
+The GAM analysis reveals substantial differences in how socioeconomic factors influence homelessness rates across rural and non-rural settings. The rural model demonstrates considerably stronger explanatory power and shows distinctive patterns in how certain factors affect homelessness.
+
+The rural GAM model substantially outperforms the non-rural model:Rural model: 68.8% deviance explained, R-squared of 0.662
+Non-rural model: 41.7% deviance explained, R-squared of 0.402. This significant gap in explanatory power (26.4 percentage points) suggests that the socioeconomic factors we examined more comprehensively capture the dynamics of rural homelessness than urban homelessness, which likely involves additional factors not included in our model.
+
+1. Unemployment Rate: Rural areas is not statistically significant (p=0.304510) with a linear relationship (edf=1.000). Non-rural areas has significant non-linear relationship (p=0.00421) with moderate complexity (edf=2.656). The smooth plots illustrate this contrast clearly. In rural areas, unemployment shows a weak, slightly negative linear association with homelessness rates. In non-rural areas, however, unemployment exhibits a U-shaped relationship, where homelessness rates increase more rapidly at higher unemployment levels.
+
+2. Education (dem_soc_ed_hsgrad_acs5yr_2017): Rural areas has significant non-linear relationship (p=0.009504) with substantial complexity (edf=4.464). Non-rural areas has marginally significant linear relationship (p=0.06295, edf=1.000). This represents a complete reversal of pattern. In rural areas, education shows a complex relationship with homelessness, featuring an inverted U-shape peaking around 25-30% graduation rates. In non-rural areas, education shows a simpler negative linear association.
+
+3. Median Income: Rural areas has strong linear negative relationship (p<2e-16, F=58.048). Non-rural areas has strong linear negative relationship (p<2e-16, F=138.281). Both settings show consistent negative relationships between income and homelessness, but the effect appears stronger in non-rural areas as indicated by the higher F-statistic.
+
+4. Median Rent: Rural areas has strong positive linear relationship (p<2e-16, F=124.737). Non-rural areas has strong positive linear relationship (p<2e-16, F=99.054). Housing costs show consistently positive relationships with homelessness in both settings, but the effect appears somewhat stronger in rural areas based on the F-statistic.
+
+5. Summer Temperature: Rural areas has significant linear negative relationship (p=0.000399). Non-rural areas has significant near-linear relationship (p=4.28e-07, edf=1.067). Temperature effects are similar across settings, with warmer areas generally showing lower homelessness rates.
+
+:::
+
+
+### Question 5 
+
+Examining the data^[Only consider data from the year 2017.], there are many other possible variables that could be used to model homelessness rates (`homelessness_rate`) than those hypothesized in #2. Develop a strategy and implement it to develop the best model for predicting homelessness rates. How well does this model predict homelessness rates? How much better (or worse) at predicting homelessness rates is it than the model developed in #2? 
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(caret)   
+library(MASS) 
+library(glmnet)  
+```
+
+```{r}
+homeless_data_Q5 <- homelessness_data %>%
+  filter(year == 2017) %>%
+  mutate(homelessness_rate = pit_tot_hless_pit_hud / dem_pop_pop_census,
+         log_homelessness_rate = log(homelessness_rate + 0.0001))
+```
+
+```{r}
+# select the usable predictors which has missing value < 5
+var_missing <- colSums(is.na(homeless_data_Q5)) / nrow(homeless_data_Q5) * 100
+print(sort(var_missing[var_missing > 0], decreasing = TRUE)[1:20])
+
+low_missing_vars <- names(var_missing[var_missing < 5])
+low_missing_vars <- low_missing_vars[!low_missing_vars %in% c("homelessness_rate", "log_homelessness_rate")]
+low_missing_vars <- low_missing_vars[sapply(homeless_data_Q5[low_missing_vars], is.numeric)]
+```
+
+```{r, warning=FALSE}
+# 4. Examine correlations with homelessness_rate
+correlations <- data.frame(
+  variable = low_missing_vars,
+  correlation = sapply(low_missing_vars, function(var) {
+    cor(homeless_data_Q5[[var]], homeless_data_Q5$homelessness_rate, 
+        use = "pairwise.complete.obs")
+  })
+)
+correlations <- correlations[order(abs(correlations$correlation), decreasing = TRUE), ]
+print(head(correlations, 10))  # Top 10 correlated variables
+```
+
+```{r}
+# 5. Create training and testing datasets
+set.seed(123)
+homeless_data_complete <- na.omit(homeless_data_Q5[, c("log_homelessness_rate", low_missing_vars)])
+train_indices <- sample(1:nrow(homeless_data_complete), 0.7 * nrow(homeless_data_complete))
+train_data <- homeless_data_complete[train_indices, ]
+test_data <- homeless_data_complete[-train_indices, ]
+```
+
+```{r}
+# 6. Fit original model from Question 2
+original_model <- gam(log_homelessness_rate ~ 
+                   s(econ_labor_unemp_rate_BLS) +
+                   s(dem_soc_ed_hsgrad_acs5yr_2017) +
+                   s(econ_labor_medinc_acs5yr_2017) +
+                   s(hou_mkt_medrent_acs5yr_2017) +
+                   s(env_wea_avgtemp_summer_noaa),
+                  family = gaussian(),
+                  method = "REML",
+                  data = train_data)
+```
+
+```{r}
+# 7. Correlation-based model (using top correlated variables)
+top_vars <- head(correlations, 10)$variable
+correlation_formula <- paste("log_homelessness_rate ~", paste(top_vars, collapse = " + "))
+correlation_model <- gam(as.formula(correlation_formula),
+                   family = gaussian(),
+                   method = "REML",
+                   data = train_data)
+```
+
+```{r}
+# 8. Forward selection method
+simple_model <- glm(log_homelessness_rate ~ 1, data = train_data)
+forward_model <- step(simple_model, 
+                     scope = list(lower = simple_model, 
+                                 upper = as.formula(paste("log_homelessness_rate ~", 
+                                                        paste(low_missing_vars, collapse = " + ")))),
+                     direction = "forward", trace = FALSE)
+```
+
+```{r}
+original_pred <- predict(original_model, newdata = test_data)
+correlation_pred <- predict(correlation_model, newdata = test_data)
+forward_pred <- predict(forward_model, newdata = test_data)
+
+calculate_metrics <- function(actual, predicted) {
+  valid <- !is.na(predicted)
+  actual <- actual[valid]
+  predicted <- predicted[valid]
+
+  rmse <- sqrt(mean((actual - predicted)^2))
+  mae <- mean(abs(actual - predicted))
+  r_squared <- cor(actual, predicted)^2
+  
+  mean_error <- mean(actual - predicted)
+  mape <- mean(abs((actual - predicted) / actual)) * 100
+  
+  return(c(RMSE = rmse, 
+           MAE = mae, 
+           R_squared = r_squared,
+           Mean_Error = mean_error,
+           MAPE = mape))
+}
+# Get metrics for all models
+metrics_original <- calculate_metrics(test_data$log_homelessness_rate, original_pred)
+metrics_correlation <- calculate_metrics(test_data$log_homelessness_rate, correlation_pred)
+metrics_forward <- calculate_metrics(test_data$log_homelessness_rate, forward_pred)
+
+# Create comparison table
+model_comparison <- data.frame(
+  Model = c("Original", "Correlation-based", "Forward Selection"),
+  RMSE = c(metrics_original["RMSE"], metrics_correlation["RMSE"], metrics_forward["RMSE"]),
+  MAE = c(metrics_original["MAE"], metrics_correlation["MAE"], metrics_forward["MAE"]),
+  R_squared = c(metrics_original["R_squared"], metrics_correlation["R_squared"], metrics_forward["R_squared"]),
+  Mean_Error = c(metrics_original["Mean_Error"], metrics_correlation["Mean_Error"], metrics_forward["Mean_Error"]),
+  MAPE = c(metrics_original["MAPE"], metrics_correlation["MAPE"], metrics_forward["MAPE"])
+)
+```
+
+```{r}
+print(model_comparison)
+
+# Identify the best model
+best_model_idx <- which.min(model_comparison$RMSE)
+best_model_name <- model_comparison$Model[best_model_idx]
+cat("\nBest model based on RMSE:", best_model_name, "\n")
+```
+From the result, we can see that the correlation-based model clearly outperforms the other models across all metrics. The correlation-based model achieves an RMSE of 0.276, representing a 44.3% improvement in prediction error compared to the original model's RMSE of 0.495. Additionally, the correlation-based model explains 82.5% of the variance in homelessness rates (R-squared = 0.825), nearly double the explanatory power of the original model (R-squared = 0.432). MAE metrics reinforce this pattern, with the correlation-based model's MAE of 0.205 demonstrating substantially greater accuracy than the original model's 0.399 and the forward selection model's 0.354. The correlation-based model also shows the smallest Mean Error (0.002), indicating minimal systematic bias in its predictions. The MAPE of 3.22% for the correlation-based model further shows roughly half the percentage error of the original model (6.19%) and significantly better performance than the Forward Selection model (5.88%).
+
+```{r}
+anova(original_model, correlation_model, forward_model)
+```
+
+By the ANOVA result, we can see that correlation model contribute substantially more to explaining the model variance compared to the forward selection model, as evidenced by the higher sum of squares and F-statistic. The reduction in residual deviance from 58.639 to 22.368 between the first and second models represents a substantial improvement in model fit. However, the increase in residual deviance to 4.713 for the third model indicates diminished performance, consistent with our finding that the Forward Selection model underperforms compared to the correlation-based approach. Therefore, based on the comparison table and the ANOVA result, we can conclude that the correlation-based model has the best fit over these three models.
+
+
+:::
+
+### Question 6
+
+Imagine that based upon your results in #5, the model you develop will be used by federal agencies to direct block grants^[A grant which allows local authorities to decide how the funds will be used.] for assisting with homelessness. Would you suggest your model for this use? Explain. 
+
+Suppose the model you develop will also be used by federal agencies to direct funds to specific causes of homelessness. Would you suggest your model for this use? Explain.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+For Block Grant Allocation:
+The correlation-based model demonstrates superior predictive accuracy (RMSE: 0.277) and explanatory power (R-squared: 0.822) compared to alternative models. For block grants where local authorities determine specific uses, the model can effectively identify communities with the highest rates of homelessness. The model's lower mean error (0.0053) suggests minimal systematic bias in predictions, reducing the risk of consistently under- or over-allocating funds.
+
+For implementation and considerations:
+1.Federal agencies should document which variables drive the predictions to ensure stakeholders understand the rationale behind funding decisions
+2.The model should be evaluated for fairness across different types of communities (urban/rural, demographic composition)
+3.The model should inform but not solely determine grant allocation, allowing for consideration of additional factors like:h- istorical funding levels; local capacity to implement programs; recent trends not captured in the 2017 data.
+4.As socioeconomic conditions change, the model should be periodically retrained and validated with new data
+
+For specific causes of homelessness:
+For directing funds to specific causes of homelessness, I would not recommend using the correlation-based model without substantial modification.
+
+Limitations for Causal Intervention Funding:
+1.While the model effectively predicts homelessness rates, it doesn't establish causal relationships between variables and homelessness
+2.The correlation-based approach likely omits important variables that explain the mechanisms driving homelessness
+3.The model doesn't distinguish between different pathways to homelessness (e.g., mental health, housing affordability, domestic violence)
+Instead, I recommend developing a structural model that incorporates theory-guided relationships between variables, distinguishes between different causes of homelessness, and has the impact of specific interventions based on causal evidence from program evaluations
+
+:::
+
+## Appendix 
+
+Only include this sectoin if needed. Otherwise delete it. 
