@@ -70,7 +70,7 @@ As George Box said, "All models are wrong, but some are useful."
 
 ```{r}
 homelessness_data <- read_csv("/Users/karlies/Desktop/05b_analysis_file_update.csv")
-data_dictionary <- data_dictionary <- read_excel(file.choose("HUD T03 - 05b Analysis File - Data Dictionary.xlsx"))
+data_dictionary <- read_excel("/Users/karlies/Downloads/Data_Dictionary.xlsx")
 ```
 
 
@@ -128,6 +128,7 @@ Please perform an analysis to evaluate the relationship between these variables 
 
 ```{r}
 library(dplyr)
+library(mgcv)
 homelessness_data_analysis <- homelessness_data_2017 %>%
   dplyr::select(homelessness_rate, 
          econ_labor_unemp_rate_BLS,
@@ -139,7 +140,7 @@ homelessness_data_analysis <- homelessness_data_2017 %>%
 
 # Log-transform the homelessness rate
 homelessness_data_analysis <- homelessness_data_analysis %>%
-  mutate(log_homelessness_rate = log(homelessness_rate + ifelse(zero_count > 0, 0.0001, 0)))
+  mutate(log_homelessness_rate = log(homelessness_rate + 0.0001))
 
 # Examine correlations between variables
 correlation_matrix <- cor(homelessness_data_analysis, use = "complete.obs")
